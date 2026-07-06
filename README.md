@@ -2,6 +2,11 @@
 
 Physics-based Monte Carlo simulation of golf putting.
 
+**Live results**: the interactive pace matrix (optimal pace by skill, putt
+length, slope, and direction) is served at
+<https://jhoblitt.github.io/putttron/>, deployed from
+`results/pace-matrix.html` on every push to main.
+
 Founding question: **for 10–20 ft putts, what is the ideal distance for the
 ball to roll past the hole on missed putts?** Answered by simulating a ball
 rolling on sloped greens (Penner/Holmes physics) under per-skill-level human
