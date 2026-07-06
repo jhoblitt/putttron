@@ -1,0 +1,186 @@
+<title>putttron — pace by slope &amp; direction</title>
+<style>
+:root{
+  --paper:#f7f7f3; --card:#fdfdfb; --ink:#181c15; --ink-2:#565b50; --ink-3:#8a8f82;
+  --rule:#e2e3da; --rule-2:#cfd1c5;
+  --r0:#eef3ef; --r1:#cde2fb; --r2:#9ec5f4; --r3:#5598e7; --r4:#2a78d6; --r5:#1c5cab; --r6:#104281;
+  --ink-on-deep:#f5f8fc;
+  --tip-bg:#181c15; --tip-ink:#f2f2ec;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --paper:#191b17; --card:#20231e; --ink:#f2f2ec; --ink-2:#b3b7aa; --ink-3:#7d8175;
+    --rule:#31352c; --rule-2:#41453a;
+    --r0:#242822; --r1:#0d366b; --r2:#1c5cab; --r3:#2a78d6; --r4:#5598e7; --r5:#9ec5f4; --r6:#cde2fb;
+    --ink-on-deep:#f5f8fc;
+    --tip-bg:#f2f2ec; --tip-ink:#181c15;
+  }
+}
+:root[data-theme="light"]{
+  --paper:#f7f7f3; --card:#fdfdfb; --ink:#181c15; --ink-2:#565b50; --ink-3:#8a8f82;
+  --rule:#e2e3da; --rule-2:#cfd1c5;
+  --r0:#eef3ef; --r1:#cde2fb; --r2:#9ec5f4; --r3:#5598e7; --r4:#2a78d6; --r5:#1c5cab; --r6:#104281;
+  --ink-on-deep:#f5f8fc; --tip-bg:#181c15; --tip-ink:#f2f2ec;
+}
+:root[data-theme="dark"]{
+  --paper:#191b17; --card:#20231e; --ink:#f2f2ec; --ink-2:#b3b7aa; --ink-3:#7d8175;
+  --rule:#31352c; --rule-2:#41453a;
+  --r0:#242822; --r1:#0d366b; --r2:#1c5cab; --r3:#2a78d6; --r4:#5598e7; --r5:#9ec5f4; --r6:#cde2fb;
+  --ink-on-deep:#f5f8fc; --tip-bg:#f2f2ec; --tip-ink:#181c15;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);
+  font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;
+  -webkit-font-smoothing:antialiased}
+.wrap{max-width:1080px;margin:0 auto;padding:40px 24px 72px}
+header{border-bottom:2px solid var(--ink);padding-bottom:18px;margin-bottom:10px}
+.eyebrow{font:600 11px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink-3);margin:0 0 10px}
+h1{font-family:"Iowan Old Style",Palatino,"Palatino Linotype",Georgia,serif;
+  font-size:clamp(26px,4vw,36px);font-weight:600;margin:0 0 8px;text-wrap:balance}
+.lede{max-width:64ch;color:var(--ink-2);margin:0}
+.lede strong{color:var(--ink)}
+.meta{display:flex;flex-wrap:wrap;gap:8px 22px;margin:14px 0 0;padding:0;list-style:none;
+  font:12px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink-3)}
+.legend{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin:18px 0 34px;
+  font:12px/1 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink-2)}
+.legend .ramp{display:flex}
+.legend .ramp i{width:34px;height:14px;display:block}
+.legend .ramp i:first-child{border-radius:3px 0 0 3px}
+.legend .ramp i:last-child{border-radius:0 3px 3px 0}
+section{margin:0 0 34px}
+.skill-head{border-bottom:1px solid var(--rule-2);
+  padding-bottom:6px;margin-bottom:14px;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.skill-head h2{font-family:"Iowan Old Style",Palatino,"Palatino Linotype",Georgia,serif;
+  font-size:21px;font-weight:600;margin:0}
+.skill-head .sub{color:var(--ink-3);font-size:13px}
+.grids{display:grid;grid-template-columns:repeat(auto-fit,minmax(290px,1fr));gap:16px}
+.card{background:var(--card);border:1px solid var(--rule);border-radius:6px;padding:14px 14px 12px}
+.card h3{margin:0 0 10px;font:600 13px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+  letter-spacing:.06em;color:var(--ink-2)}
+table{border-collapse:separate;border-spacing:2px;width:100%;font-variant-numeric:tabular-nums}
+th{font:600 10.5px/1.2 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.05em;
+  text-transform:uppercase;color:var(--ink-3);font-weight:600;padding:2px 4px}
+thead th{text-align:center;padding-bottom:6px}
+tbody th{text-align:right;white-space:nowrap}
+td{border-radius:4px;text-align:center;padding:7px 4px 6px;cursor:default;min-width:72px}
+td:focus-visible{outline:2px solid var(--ink);outline-offset:1px}
+td .v{display:block;font:700 15px/1.15 ui-monospace,SFMono-Regular,Menlo,monospace}
+td .s{display:block;font:11px/1.3 ui-monospace,SFMono-Regular,Menlo,monospace;opacity:.82;margin-top:1px}
+td.blank{background:transparent;color:var(--ink-3);cursor:auto}
+#tip{position:absolute;z-index:10;max-width:270px;background:var(--tip-bg);color:var(--tip-ink);
+  border-radius:6px;padding:10px 12px;font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace;
+  pointer-events:none;visibility:hidden;box-shadow:0 4px 16px rgba(0,0,0,.25)}
+#tip b{font-size:13px}
+.foot{margin-top:26px;padding-top:14px;border-top:1px solid var(--rule-2);
+  color:var(--ink-3);font-size:12.5px;max-width:74ch}
+.foot code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+</style>
+
+<div class="wrap">
+<header>
+  <p class="eyebrow">putttron · phase 1 · monte carlo sweep (seed-reproducible)</p>
+  <h1>How hard to hit it: optimal pace by slope and putt direction</h1>
+  <p class="lede">Each cell is the <strong>target rollout</strong> — how far past the hole the
+  perfectly-struck putt should finish — that minimizes expected putts to hole out.
+  <strong>die</strong> means aim to have the ball die at the front edge. Small figures are
+  first-putt make% and 3-putt% at that target. Hover or focus a cell for the full detail.</p>
+  <ul class="meta">
+    <li>green speed: Stimp {{.Stimp}} (8–12 shifts any cell ≤ one 4 in step)</li>
+    <li>12 o'clock = ball above hole, putting downhill · 6 = uphill · 3 = sidehill (9 mirrors it)</li>
+  </ul>
+</header>
+
+<div class="legend" aria-hidden="true">
+  <span>target rollout</span>
+  <span class="ramp"><i style="background:var(--r0)"></i><i style="background:var(--r1)"></i><i style="background:var(--r2)"></i><i style="background:var(--r3)"></i><i style="background:var(--r4)"></i><i style="background:var(--r5)"></i><i style="background:var(--r6)"></i></span>
+  <span>die · 4 · 8 · 12 · 16 · 20 · 24 in</span>
+</div>
+
+<div id="app"></div>
+
+<p class="foot">Slope in % grade (1° = 1.7%, 2° = 3.5%, 3° = 5.2%). Flat greens have no
+direction, so only one cell. Physics: Penner (2002) rolling model, Holmes/Penner capture;
+error models calibrated to Bansal &amp; Broadie ShotLink data and published make-% tables.
+Source: {{.SourceNote}} — full tables in
+<code>results/optimal-rollout.md</code>, narrative in <code>results/findings-phase1.md</code>
+(github.com/jhoblitt/putttron).</p>
+</div>
+<div id="tip" role="status"></div>
+
+<script>
+const DATA={{.DataJSON}};
+const SKILLS={{.SkillsJSON}};
+const LENGTHS={{.LengthsJSON}};
+const SLOPES={{.SlopesJSON}};
+const CLOCKS=[[12,"12 · downhill"],[3,"3 · sidehill"],[6,"6 · uphill"]];
+const STEP=["r0","r1","r2","r3","r4","r5","r6"];
+const M2IN=39.3701;
+
+function stepFor(ro){ return STEP[Math.min(6,Math.round(ro*10))]; }
+function deepInk(cls){
+  const dark=matchMedia("(prefers-color-scheme: dark)").matches;
+  const t=document.documentElement.dataset.theme;
+  const isDark = t ? t==="dark" : dark;
+  // deepest steps need light ink in light mode; in dark mode the high steps are light blues → dark ink
+  return isDark ? ["r1","r2"].includes(cls) : ["r3","r4","r5","r6"].includes(cls);
+}
+const app=document.getElementById("app");
+for(const [sk,desc] of SKILLS){
+  const sec=document.createElement("section");
+  sec.innerHTML=`<div class="skill-head"><h2>${sk}</h2><span class="sub">${desc}</span></div>`;
+  const grids=document.createElement("div"); grids.className="grids";
+  for(const ft of LENGTHS){
+    const card=document.createElement("div"); card.className="card";
+    card.innerHTML=`<h3>${ft} ft</h3>`;
+    const tb=document.createElement("table");
+    tb.innerHTML=`<thead><tr><th></th>${CLOCKS.map(c=>`<th scope="col">${c[1]}</th>`).join("")}</tr></thead>`;
+    const body=document.createElement("tbody");
+    for(const [s,label] of SLOPES){
+      const tr=document.createElement("tr");
+      tr.innerHTML=`<th scope="row">${label}</th>`;
+      for(const [clk] of CLOCKS){
+        const td=document.createElement("td");
+        const c=DATA[`${sk}|${ft}|${s}|${clk}`];
+        if(!c){ td.className="blank"; td.textContent="·"; tr.appendChild(td); continue; }
+        const cls=stepFor(c.ro);
+        td.className=cls; td.tabIndex=0;
+        td.style.background=`var(--${cls})`;
+        const roIn=c.ro*M2IN;
+        const big=c.ro===0?"die":`${Math.round(roIn)} in`;
+        td.innerHTML=`<span class="v">${big}</span><span class="s">${c.make.toFixed(0)}% · 3p ${c.tp.toFixed(0)}%</span>`;
+        if(deepInk(cls)) td.style.color="var(--ink-on-deep)";
+        td.dataset.tip=[
+          `<b>${sk} · ${ft} ft · ${s===0?"flat":label+" slope"}${s===0?"":" · "+ (clk===12?"downhill":clk===6?"uphill":"sidehill")}</b>`,
+          `target: ${c.ro===0?"die at the hole":Math.round(roIn)+" in past"} (plateau ${Math.round(c.plo*M2IN)}–${Math.round(c.phi*M2IN)} in)`,
+          `make ${c.make.toFixed(1)}% · 3-putt ${c.tp.toFixed(1)}% · E[putts] ${c.E.toFixed(3)}`,
+          `misses that go long finish ~${Math.round(c.past*M2IN)} in past · ${c.short}% of misses short`
+        ].join("<br>");
+        tr.appendChild(td);
+      }
+      body.appendChild(tr);
+    }
+    tb.appendChild(body); card.appendChild(tb); grids.appendChild(card);
+  }
+  sec.appendChild(grids); app.appendChild(sec);
+}
+const tip=document.getElementById("tip");
+function showTip(el){
+  tip.innerHTML=el.dataset.tip; tip.style.visibility="visible";
+  const r=el.getBoundingClientRect(), tw=tip.offsetWidth;
+  let x=r.left+scrollX+r.width/2-tw/2;
+  x=Math.max(8,Math.min(x,scrollX+document.documentElement.clientWidth-tw-8));
+  tip.style.left=x+"px";
+  tip.style.top=(r.top+scrollY-tip.offsetHeight-8)+"px";
+}
+function hideTip(){ tip.style.visibility="hidden"; }
+app.addEventListener("mouseover",e=>{const t=e.target.closest("td[data-tip]"); if(t) showTip(t);});
+app.addEventListener("mouseout",e=>{if(e.target.closest("td[data-tip]")) hideTip();});
+app.addEventListener("focusin",e=>{const t=e.target.closest("td[data-tip]"); if(t) showTip(t);});
+app.addEventListener("focusout",hideTip);
+// re-resolve deep-ink when theme flips
+new MutationObserver(()=>{document.querySelectorAll("td[data-tip]").forEach(td=>{
+  const cls=[...td.classList].find(c=>c.startsWith("r"));
+  td.style.color=deepInk(cls)?"var(--ink-on-deep)":"";
+});}).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
+</script>
