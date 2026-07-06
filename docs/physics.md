@@ -23,8 +23,8 @@ field):
 
 At (numerically) zero speed, rolling resistance opposes incipient downslope
 motion: the ball stays at rest iff `(5/7)·g·sinθ ≤ a_d·cosθ`, i.e.
-`tanθ ≤ (7/5)·a_d/g` (equivalent to Penner's ρ_g ≥ tanθ). Runaway slopes:
->4.5° at Stimp 10, >3.7° at Stimp 12.
+`tanθ ≤ (7/5)·a_d/g` (equivalent to Penner's ρ_g ≥ tanθ). Runaway grades:
+>7.8% at Stimp 10, >6.5% at Stimp 12.
 
 Integrator: fixed-step RK4, dt = 1 ms, terminate at rest (speed < 1 mm/s and
 the rest condition holds) or capture; runaway if still moving at MaxTime.

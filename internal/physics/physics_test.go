@@ -28,9 +28,9 @@ func TestStimpCalibration(t *testing.T) {
 
 // Stopping distance on a slope must match d = v0² / (2·(a_d·cosθ ± (5/7)·g·sinθ)).
 func TestSlopeStoppingDistance(t *testing.T) {
-	const slopeDeg, stimp, v0 = 2.0, 10.0, 2.0
+	const slopePct, stimp, v0 = 3.0, 10.0, 2.0
 	ad := DecelFromStimp(stimp)
-	th := slopeDeg * math.Pi / 180
+	th := math.Atan(slopePct / 100)
 
 	for _, tc := range []struct {
 		name string
@@ -39,7 +39,7 @@ func TestSlopeStoppingDistance(t *testing.T) {
 		{"uphill", -1},
 		{"downhill", +1},
 	} {
-		e := NewEnv(green.NewPlanar(slopeDeg, ad), 1.63)
+		e := NewEnv(green.NewPlanar(slopePct, ad), 1.63)
 		e.HolePos = Vec2{X: 100}
 		out := e.Roll(Vec2{}, Vec2{X: tc.dir * v0}, false)
 		decel := ad*math.Cos(th) - tc.dir*(5.0/7.0)*G*math.Sin(th)
@@ -102,23 +102,24 @@ func TestDyingBallCapture(t *testing.T) {
 }
 
 func TestRestOnSlope(t *testing.T) {
-	// Stimp 10: μ_r = 7·a_d/(5g) ≈ 0.078 → holds ~4.5°; 3° holds, 6° rolls.
+	// Stimp 10: μ_r = 7·a_d/(5g) ≈ 0.078 → holds up to ~7.8% grade;
+	// 5% holds, 10% rolls away.
 	ad := DecelFromStimp(10)
-	hold := NewEnv(green.NewPlanar(3, ad), 1.63)
+	hold := NewEnv(green.NewPlanar(5, ad), 1.63)
 	hold.HolePos = Vec2{X: 100}
 	if out := hold.Roll(Vec2{}, Vec2{X: -0.01}, false); out.Runaway || out.Rest.Norm() > 0.1 {
-		t.Errorf("ball on 3°/stimp-10 should stop near start: %+v", out)
+		t.Errorf("ball on 5%%/stimp-10 should stop near start: %+v", out)
 	}
-	steep := NewEnv(green.NewPlanar(6, ad), 1.63)
+	steep := NewEnv(green.NewPlanar(10, ad), 1.63)
 	steep.HolePos = Vec2{X: 100}
 	if out := steep.Roll(Vec2{}, Vec2{X: 0.01}, false); !out.Runaway {
-		t.Errorf("ball on 6°/stimp-10 should run away, rested at %+v", out.Rest)
+		t.Errorf("ball on 10%%/stimp-10 should run away, rested at %+v", out.Rest)
 	}
 }
 
 // A cross-slope putt must break toward the downhill (+X) side.
 func TestSidehillBreak(t *testing.T) {
-	e := NewEnv(green.NewPlanar(2, DecelFromStimp(10)), 1.63)
+	e := NewEnv(green.NewPlanar(3.5, DecelFromStimp(10)), 1.63)
 	e.HolePos = Vec2{X: 100, Y: 100}
 	out := e.Roll(Vec2{}, Vec2{Y: 2.0}, false)
 	if out.Rest.X <= 0.05 {

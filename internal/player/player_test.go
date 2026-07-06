@@ -13,16 +13,16 @@ import (
 func TestSolveGeometry(t *testing.T) {
 	for _, tc := range []struct {
 		name     string
-		slopeDeg float64
+		slopePct float64
 		ball     physics.Vec2
 	}{
 		{"flat", 0, physics.Vec2{X: -3}},
-		{"uphill", 2, physics.Vec2{X: 4.5}},
-		{"downhill", 2, physics.Vec2{X: -4.5}},
-		{"sidehill", 3, physics.Vec2{Y: 6}},
+		{"uphill", 3.5, physics.Vec2{X: 4.5}},
+		{"downhill", 3.5, physics.Vec2{X: -4.5}},
+		{"sidehill", 5, physics.Vec2{Y: 6}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			env := physics.NewEnv(green.NewPlanar(tc.slopeDeg, physics.DecelFromStimp(10)), physics.PennerVC0)
+			env := physics.NewEnv(green.NewPlanar(tc.slopePct, physics.DecelFromStimp(10)), physics.PennerVC0)
 			const rollout = 0.4
 			aim, ok := Solve(env, tc.ball, rollout)
 			if !ok {
@@ -43,7 +43,7 @@ func TestSolveGeometry(t *testing.T) {
 
 // On a sidehill putt the solved aim must borrow to the uphill (−X) side.
 func TestSolveBorrowsUphill(t *testing.T) {
-	env := physics.NewEnv(green.NewPlanar(2, physics.DecelFromStimp(10)), physics.PennerVC0)
+	env := physics.NewEnv(green.NewPlanar(3.5, physics.DecelFromStimp(10)), physics.PennerVC0)
 	ball := physics.Vec2{Y: 3}
 	aim, ok := Solve(env, ball, 0.3)
 	if !ok {

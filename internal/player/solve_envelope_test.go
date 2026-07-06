@@ -9,14 +9,14 @@ import (
 )
 
 // The solver must converge over the whole Phase-1 sweep envelope:
-// stimp 8–12, slopes 0–3°, all clock positions, 10–20 ft, rollouts 0–1.2 m.
+// stimp 8–12, slopes 0–5% grade, all clock positions, 10–20 ft, rollouts 0–1.2 m.
 func TestSolveEnvelope(t *testing.T) {
 	if testing.Short() {
 		t.Skip("envelope sweep")
 	}
 	fails := 0
 	for _, stimp := range []float64{8, 10, 12} {
-		for _, slope := range []float64{0, 1, 2, 3} {
+		for _, slope := range []float64{0, 1, 2, 3, 4, 5} {
 			env := physics.NewEnv(green.NewPlanar(slope, physics.DecelFromStimp(stimp)), physics.PennerVC0)
 			for _, ball := range []physics.Vec2{
 				{X: -6.096}, {X: 6.096}, {Y: 6.096}, // 20 ft at 12, 6, 3 o'clock

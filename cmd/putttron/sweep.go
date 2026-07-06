@@ -34,7 +34,7 @@ func clockPos(clock int, length float64) physics.Vec2 {
 type sweepRow struct {
 	stimp    float64
 	skill    string
-	slopeDeg float64
+	slopePct float64
 	clock    int
 	lengthFt float64
 	rolloutM float64
@@ -76,7 +76,7 @@ func cmdSweep(args []string) {
 		}
 		stimps = append(stimps, v)
 	}
-	slopes := []float64{0, 1, 2, 3}
+	slopes := []float64{0, 1, 2, 3, 4, 5}
 	clocks := []int{12, 3, 6}
 	lengthsFt := []float64{10, 15, 20}
 	rollouts := []float64{0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2}
@@ -93,7 +93,7 @@ func cmdSweep(args []string) {
 				cks = []int{12} // direction is meaningless on a flat green
 			}
 			for _, sk := range profiles {
-				fmt.Fprintf(os.Stderr, "field: stimp=%g slope=%g° skill=%s (t=%s)\n",
+				fmt.Fprintf(os.Stderr, "field: stimp=%g slope=%g%% skill=%s (t=%s)\n",
 					stimp, slope, sk.Name, time.Since(start).Round(time.Second))
 				field := sim.BuildField(env, sk, sim.FieldOpts{
 					LagRollout: *lag, Trials: *fieldTrials, Sweeps: *fieldSweeps, Seed: *seed,
@@ -104,7 +104,7 @@ func cmdSweep(args []string) {
 					for _, ft := range lengthsFt {
 						for _, ro := range rollouts {
 							cells = append(cells, sweepRow{
-								stimp: stimp, skill: sk.Name, slopeDeg: slope,
+								stimp: stimp, skill: sk.Name, slopePct: slope,
 								clock: ck, lengthFt: ft, rolloutM: ro,
 							})
 						}
@@ -115,7 +115,7 @@ func cmdSweep(args []string) {
 					ball := clockPos(c.clock, c.lengthFt*0.3048)
 					// Common random numbers: seed depends on everything BUT
 					// rollout, so E-vs-rollout curves are smooth.
-					cellSeed := *seed<<32 ^ uint64(c.stimp*100)<<20 ^ uint64(c.slopeDeg)<<16 ^
+					cellSeed := *seed<<32 ^ uint64(c.stimp*100)<<20 ^ uint64(c.slopePct)<<16 ^
 						uint64(c.clock)<<8 ^ uint64(c.lengthFt)
 					c.res = sim.EvalCell(env, ball, sk, c.rolloutM, field, *trials, cellSeed)
 				})
@@ -136,10 +136,10 @@ func cmdSweep(args []string) {
 
 func writeCSV(path string, rows []sweepRow) {
 	var b strings.Builder
-	b.WriteString("stimp,skill,slope_deg,clock,length_ft,rollout_m,solve_ok,make,make_se,three_plus,exp_strokes,exp_strokes_se,mean_past_miss_m,pct_miss_short,mean_leave_m\n")
+	b.WriteString("stimp,skill,slope_pct,clock,length_ft,rollout_m,solve_ok,make,make_se,three_plus,exp_strokes,exp_strokes_se,mean_past_miss_m,pct_miss_short,mean_leave_m\n")
 	for _, r := range rows {
 		fmt.Fprintf(&b, "%g,%s,%g,%d,%g,%.2f,%t,%.5f,%.5f,%.5f,%.5f,%.5f,%.4f,%.4f,%.4f\n",
-			r.stimp, r.skill, r.slopeDeg, r.clock, r.lengthFt, r.rolloutM,
+			r.stimp, r.skill, r.slopePct, r.clock, r.lengthFt, r.rolloutM,
 			r.res.SolveOK, r.res.Make, r.res.MakeSE, r.res.ThreePlus,
 			r.res.EStrokes, r.res.EStrokesSE,
 			r.res.MeanPastMiss, r.res.PctMissShort, r.res.MeanLeave)

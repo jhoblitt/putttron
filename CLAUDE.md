@@ -69,9 +69,10 @@ type Surface interface {
 }
 ```
 
-- `Planar`: analytic tilted plane, parameterized by slope angle (degrees) and
-  fall-line azimuth. Phase 1 uses only this. Uniform friction derived from a
-  Stimp value.
+- `Planar`: analytic tilted plane, parameterized by slope as **% grade**
+  (rise/run × 100 — the unit golfers, green books, and green_maps use; never
+  degrees at any user-facing boundary). Phase 1 uses only this. Uniform
+  friction derived from a Stimp value.
 - `Heightmap`: bilinear/bicubic interpolation over a regular grid — the
   ingestion target for real greens (see "Real greens" below).
 - Grain (future): anisotropic friction, e.g.
@@ -164,11 +165,12 @@ any strategy claims.
 
 1. **Phase 1 — planar greens (current).** Physics core, planar green, skill
    profiles from literature, calibration gate, then the founding-question
-   sweep: skills × {0,1,2,3}° slopes × {12,3,6 o'clock} × 10/15/20 ft ×
-   green speeds Stimp {8, 10, 12} (slow / typical / fast; tour-speed 13+ can
-   be added but collides with the downhill-runaway degeneracy below).
-   (9 o'clock mirrors 3 o'clock by symmetry on a planar green — note it,
-   don't burn CPU on it.) Deliverable: `results/optimal-rollout.md`.
+   sweep: skills × {0–5}% grades in 1% steps × {12,3,6 o'clock} ×
+   10/15/20 ft × green speeds Stimp {8, 10, 12} (slow / typical / fast;
+   tour-speed 13+ can be added but collides with the downhill-runaway
+   degeneracy below). (9 o'clock mirrors 3 o'clock by symmetry on a planar
+   green — note it, don't burn CPU on it.) Deliverable:
+   `results/optimal-rollout.md` + the pace-matrix page.
 2. **Phase 2 — real greens.** Ingest `green_maps` outputs; hole/ball placement
    grids on real surfaces; per-green strategy maps.
 3. **Phase 3 — richer physics** as literature justifies: grain (anisotropic
@@ -218,11 +220,13 @@ for `Gradient` — never finite-difference the raw grid at sub-cell scale.
 - Capture speed matters more than anything: dying putts use the full 108 mm
   hole width; a putt arriving at 1.5 m/s uses a fraction of it. Get
   `v_c(b)` right and unit-test it before believing any optimum.
-- Downhill putts on fast greens can fail to stop (tanθ > 7·a_d/(5·g), i.e.
+- Downhill putts on fast greens can fail to stop (grade > 7·a_d/(5·g), i.e.
   gravity along the slope beats rolling resistance); detect and report
-  "runaway" cells instead of integrating forever. At Stimp 10 that's ~4.5°,
-  at Stimp 13 ~3.5° — a 3° downhill cell at high Stimp is near-degenerate
-  and the numbers will be extreme, not wrong.
+  "runaway" cells instead of integrating forever. The no-stop grade is
+  ~7.8% at Stimp 10, ~6.5% at Stimp 12, ~6.0% at Stimp 13 — the swept 5%
+  max clears these, but a 5% downhill cell at high Stimp still produces
+  extreme (correct) numbers, and pushing the sweep past 6% or to Stimp 13+
+  will hit the degeneracy.
 - Error sigmas from different papers are not directly comparable (aim error
   vs. total directional dispersion; % distance error vs. absolute leave).
   `docs/literature.md` must state, per number, exactly what it measures;

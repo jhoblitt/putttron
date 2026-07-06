@@ -87,7 +87,8 @@ func cmdReport(args []string) {
 	fmt.Fprintf(&b, "# Optimal rollout past the hole (Phase 1, planar greens)\n\n")
 	fmt.Fprintf(&b, "Source: `%s` (see matching .manifest.yaml). Optimal target rollout\n", *in)
 	fmt.Fprintf(&b, "minimizes expected putts to hole out; rollout is path length past the\n")
-	fmt.Fprintf(&b, "hole of the error-free putt. \"plateau\" is the rollout range whose\n")
+	fmt.Fprintf(&b, "hole of the error-free putt, sub-grid refined by a parabola through the\n")
+	fmt.Fprintf(&b, "0.1 m sweep grid around the argmin. \"plateau\" is the rollout range whose\n")
 	fmt.Fprintf(&b, "expected strokes are within one Monte Carlo SE of the minimum —\n")
 	fmt.Fprintf(&b, "anywhere in it is statistically as good as the optimum. \"miss past\"\n")
 	fmt.Fprintf(&b, "is the mean distance past the hole of missed putts at the optimum\n")
@@ -104,15 +105,15 @@ func cmdReport(args []string) {
 			}
 			g := groups[k]
 			sort.Slice(g, func(i, j int) bool { return g[i].rollout < g[j].rollout })
-			best, lo, hi := argminSE(g)
+			best, roStar, lo, hi := argminSE(g)
 			r := g[best]
 			clock := fmt.Sprintf("%d", k.clock)
 			if k.slope == 0 {
 				clock = "—"
 			}
-			fmt.Fprintf(&b, "| %s | %.0f | %.0f° | %s | %.2f m (%.0f in) | %.1f–%.1f m | %.1f | %.1f | %.3f | %.2f m (%.0f in) | %.0f |\n",
+			fmt.Fprintf(&b, "| %s | %.0f | %.0f%% | %s | %.2f m (%.0f in) | %.1f–%.1f m | %.1f | %.1f | %.3f | %.2f m (%.0f in) | %.0f |\n",
 				k.skill, k.lengthFt, k.slope, clock,
-				r.rollout, r.rollout*39.37,
+				roStar, roStar*39.37,
 				lo, hi,
 				100*r.make_, 100*r.threePlus, r.eStrokes,
 				r.meanPastMiss, r.meanPastMiss*39.37, 100*r.pctShort)
@@ -168,11 +169,11 @@ func writePaceMatrix(path string, stimp float64, inputs string, keys []groupKey,
 		}
 		g := groups[k]
 		sort.Slice(g, func(i, j int) bool { return g[i].rollout < g[j].rollout })
-		best, lo, hi := argminSE(g)
+		best, roStar, lo, hi := argminSE(g)
 		r := g[best]
 		key := fmt.Sprintf("%s|%.0f|%.0f|%d", k.skill, k.lengthFt, k.slope, k.clock)
 		data[key] = cell{
-			Ro: r.rollout, Plo: lo, Phi: hi,
+			Ro: math.Round(1000*roStar) / 1000, Plo: lo, Phi: hi,
 			Make: math.Round(1000*r.make_) / 10, Tp: math.Round(1000*r.threePlus) / 10,
 			E: math.Round(1000*r.eStrokes) / 1000, Past: math.Round(100*r.meanPastMiss) / 100,
 			Short: math.Round(100 * r.pctShort),
@@ -203,7 +204,7 @@ func writePaceMatrix(path string, stimp float64, inputs string, keys []groupKey,
 	for _, s := range sortedKeys(slopeSet) {
 		label := "flat"
 		if s != 0 {
-			label = fmt.Sprintf("%.1f%%", 100*math.Tan(s*math.Pi/180))
+			label = fmt.Sprintf("%.0f%%", s)
 		}
 		slopes = append(slopes, [2]any{s, label})
 	}
@@ -249,13 +250,27 @@ func mustJSON(v any) string {
 	return string(b)
 }
 
-// argminSE returns the index of the minimum-E row plus the rollout range
-// within one SE of the minimum.
-func argminSE(g []rptRow) (best int, lo, hi float64) {
+// argminSE returns the index of the minimum-E row, a sub-grid refined
+// optimum, and the rollout range within one SE of the minimum. The refined
+// optimum is the vertex of a parabola through the argmin and its neighbors
+// — sound because common random numbers make E(rollout) smooth — clamped to
+// the neighbor interval; at a grid edge or under negative curvature it
+// falls back to the grid point.
+func argminSE(g []rptRow) (best int, roStar, lo, hi float64) {
 	best = 0
 	for i, r := range g {
 		if r.eStrokes < g[best].eStrokes {
 			best = i
+		}
+	}
+	roStar = g[best].rollout
+	if best > 0 && best < len(g)-1 {
+		y0, y1, y2 := g[best-1].eStrokes, g[best].eStrokes, g[best+1].eStrokes
+		curv := y0 - 2*y1 + y2
+		if curv > 1e-12 {
+			h := (g[best+1].rollout - g[best-1].rollout) / 2
+			v := g[best].rollout - h/2*(y2-y0)/curv
+			roStar = math.Max(g[best-1].rollout, math.Min(g[best+1].rollout, v))
 		}
 	}
 	min, se := g[best].eStrokes, g[best].eSE
@@ -270,7 +285,7 @@ func argminSE(g []rptRow) (best int, lo, hi float64) {
 			}
 		}
 	}
-	return best, lo, hi
+	return best, roStar, lo, hi
 }
 
 func skillOrder(s string) int {

@@ -49,11 +49,11 @@ func EvalCell(env *physics.Env, ball physics.Vec2, skill player.Skill,
 	rng := rand.New(rand.NewPCG(seed, 0xce11))
 
 	var (
-		makes                  int
-		sumStrokes, sumSq      float64
-		sumMissNext            float64 // Σ (1 − P(make next)) over misses
-		nPast, nShort          int
-		sumPast, sumLeave      float64
+		makes             int
+		sumStrokes, sumSq float64
+		sumMissNext       float64 // Σ (1 − P(make next)) over misses
+		nPast, nShort     int
+		sumPast, sumLeave float64
 	)
 	for t := 0; t < n; t++ {
 		dir, speed := skill.Perturb(aim, dist, rng)
