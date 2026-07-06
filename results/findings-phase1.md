@@ -87,6 +87,14 @@ weak putters at 20 ft.
   i.e. real tour misses spread a bit more than simulated ones — our
   3-putt rates are correspondingly optimistic at the margin.
 
+## Companion views
+
+- `breakout-slope-clock.md` — optimal pace broken out by slope % and putt
+  direction (12/3/6 o'clock) per skill and length, Stimp 10.
+- `pace-matrix.html` — the same breakout as a self-contained interactive
+  heatmap page (open directly in a browser; hover a cell for plateau,
+  E[putts], and miss geometry). Data is embedded from the sweep CSVs.
+
 ## Reproduce
 
 ```
