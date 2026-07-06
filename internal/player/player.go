@@ -64,10 +64,25 @@ func Solve(env *physics.Env, ball physics.Vec2, rollout float64) (Aim, bool) {
 	if dist < 1e-6 {
 		return Aim{}, false
 	}
-	aim := Aim{
+	base := Aim{
 		Dir:   math.Atan2(chord.Y, chord.X),
 		Speed: initialSpeed(env, ball, dist+rollout),
 	}
+	// Multi-start: dying putts on sidehills sit on a knife edge and Newton
+	// can stall from the straight-at-the-hole guess.
+	for _, kick := range []struct{ dDir, kSpeed float64 }{
+		{0, 1.0}, {0.05, 1.06}, {-0.05, 1.06}, {0.1, 0.94}, {-0.1, 0.94},
+	} {
+		aim, ok := solveFrom(env, ball, rollout, dist,
+			Aim{Dir: base.Dir + kick.dDir, Speed: base.Speed * kick.kSpeed})
+		if ok {
+			return aim, true
+		}
+	}
+	return Aim{}, false
+}
+
+func solveFrom(env *physics.Env, ball physics.Vec2, rollout, dist float64, aim Aim) (Aim, bool) {
 
 	const (
 		latTol  = 0.002 // m
