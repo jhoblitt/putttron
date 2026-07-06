@@ -41,16 +41,17 @@ inputs.
 putttron/
   CLAUDE.md               # this file
   README.md
+  LICENSE                 # Apache-2.0
+  .github/workflows/      # pages.yml deploys results/pace-matrix.html on push to main
   docs/
     literature.md         # survey with citations; source of all human-error numbers
     physics.md            # derivations: equations of motion, capture model, stimp calibration
-  cmd/putttron/           # CLI (subcommands: sim, sweep, report)
+  cmd/putttron/           # CLI: calibrate, fit, sweep, report (+ pace_matrix.tmpl.html)
   internal/green/         # green surfaces (analytic planes + heightmap greens)
   internal/physics/       # ball dynamics, integrator, hole capture
   internal/player/        # skill profiles, aim/pace solver, error sampling
-  internal/sim/           # Monte Carlo engine, expected-strokes recursion, sweeps
-  internal/report/        # CSV/JSON emitters, summary tables
-  results/                # committed run outputs (small CSVs + markdown reports)
+  internal/sim/           # Monte Carlo engine, expected-strokes field, cell evaluation
+  results/                # committed run outputs (CSVs + manifests + reports + pace-matrix.html)
 ```
 
 ## Architecture
@@ -64,8 +65,8 @@ player models can evolve independently:
 type Surface interface {
     Elevation(x, y float64) float64          // z, meters
     Gradient(x, y float64) (gx, gy float64)  // ∂z/∂x, ∂z/∂y (dimensionless slope)
-    Friction(x, y, dirx, diry float64) float64 // rolling deceleration coefficient at a point,
-                                               // direction-dependent to allow grain
+    DecelCoeff(x, y, dirX, dirY float64) float64 // flat-equivalent rolling deceleration a_d (m/s²),
+                                                 // direction-dependent to allow grain
 }
 ```
 
@@ -114,63 +115,78 @@ A skill profile is the error model:
 
 ```go
 type Skill struct {
-    Name          string
-    DirSigmaDeg   float64 // std dev of launch-line error, degrees
-    SpeedSigmaPct float64 // std dev of speed error, % of intended speed
-    ReadBiasFn    ...     // optional systematic under-read of break (future)
+    Name            string
+    DirSigmaDeg     float64 // direction error, length-independent component (deg)
+    DirSigmaDegPerM float64 // direction error, length-proportional component (deg/m):
+                            // σ_dir(L)² = σ0² + (σ1·L)² — read error scales with break
+    DistSigmaPct    float64 // distance error as % of length, applied to v² (Broadie form)
+    DistSigmaFloor  float64 // absolute distance-error floor, m
 }
 ```
 
-Profiles: **tour**, **scratch**, **mid** (~10 hcp), **high** (~20 hcp).
-Numbers come from `docs/literature.md` (Broadie's putt model, Gelman & Nolan,
-Fearing et al.) and are **validated** by reproducing published
-make-%-vs-distance tables per skill level before any strategy results are
-trusted (see "Calibration gate" below).
+Profiles: **tour**, **scratch**, **mid** (~10 hcp), **high** (~20 hcp /
+90-shooter), **hcp30** (Broadie's Am3 band, ~26–45 hcp). The ladder
+deliberately STOPS at hcp30 — no shot-level putting data is published beyond
+~45 hcp, and extrapolated tiers are not added (user decision 2026-07-06).
+Direction sigmas are EFFECTIVE values fitted by `putttron fit` against
+published make-% tables (they absorb green-reading error, which the source
+papers model separately); distance sigmas come from Bansal & Broadie.
+Provenance and fit quality live in `docs/literature.md` §5.
 
 The player also owns the **aim solver**: given a green, ball, and hole, and a
-*pace policy* ("target rollout": the distance past the hole the ball would
-stop if it ran over a filled hole), find the launch direction and speed that
-(a) would stop the error-free ball that far past the hole and (b) on breaking
-putts, aims the error-free trajectory through the hole center. Solved by
-shooting (bisection/secant on launch angle and speed against the simulator
-itself — no closed form on slopes).
+*pace policy* ("target rollout": the path length past the hole the error-free
+ball travels before stopping, hole treated as filled), find the launch
+direction and speed whose trajectory passes through the hole center and stops
+that far past. Implemented as damped 2-D Newton (numerical Jacobian) on the
+residual (lateral miss at closest approach, path-length error), with
+multi-start over perturbed initial aims — per-axis fixed-point updates
+limit-cycle on strongly breaking putts, and dying sidehill putts sit on a
+knife edge.
 
 ### 4. Monte Carlo engine (`internal/sim`)
 
 - **Trial**: sample direction + speed errors around the solved aim, integrate,
   record outcome (holed, or final rest position → leave distance).
-- **Expected strokes**: `E = P(make)·1 + Σ misses (1 + E(next putt))`,
-  evaluated recursively by re-running the solver+trial from each miss's rest
-  position (depth-limited; beyond depth 4 assume 2 more strokes — with sane
-  parameters this is unreachable). The second putt uses the same skill's
-  errors — this is what penalizes blasting it 6 ft past.
-- **Sweep**: for each (skill × slope × clock position × putt length), sweep
-  target rollout from 0 to ~1.5 m; report make %, 3-putt %, expected strokes,
-  and the expected-stroke-minimizing rollout **and** the mean distance past
-  the hole of missed putts at that optimum (the founding question asks for the
-  latter — note it differs from the error-free target rollout).
-- Concurrency: trials are embarrassingly parallel; worker pool over
-  goroutines, one RNG per worker seeded from the master seed.
+- **Expected strokes**: follow-up putts are scored with an
+  **expected-strokes field** E(r,ψ) on a polar grid around the hole, built
+  per (green config, skill) by value iteration — every putt in the field
+  plays the same skill's errors under a fixed lag pace policy (0.25 m). A
+  first-putt miss looks up E at its rest position; this is what penalizes
+  blasting it 6 ft past. The field also carries P(make next) for 3-putt
+  probability.
+- **Sweep**: for each (stimp × skill × slope × clock × putt length), sweep
+  target rollout 0–1.2 m in 0.1 m steps with **common random numbers**
+  (same seed across the rollout axis → smooth E-vs-rollout curves); report
+  make %, 3-putt %, expected strokes, the expected-stroke-minimizing rollout
+  (sub-grid refined by a parabola through the argmin's neighbors — sound
+  under CRN) **and** the mean distance past the hole of missed putts at that
+  optimum (the founding question asks for the latter — note it differs from
+  the error-free target rollout).
+- Concurrency: trials are embarrassingly parallel; `sim.ParallelDo` worker
+  pool over cells/nodes, one deterministic RNG per work item derived from
+  the master seed.
 
 ### Calibration gate
 
 Strategy conclusions are only publishable when the pipeline first reproduces,
 within reasonable tolerance, (1) flat-green stopping distances implied by the
 Stimp rating, (2) published capture-speed thresholds, and (3) published
-make-%-by-distance curves per skill level on flat greens. `putttron report
---calibration` emits this comparison table; it goes in `results/` alongside
-any strategy claims.
+make-%-by-distance curves per skill level on flat greens. `putttron
+calibrate` emits the comparison table (committed as
+`results/calibration.md`); `putttron fit` is the tool that fits the
+effective direction sigmas to those published tables in the first place.
 
 ## Phase plan
 
-1. **Phase 1 — planar greens (current).** Physics core, planar green, skill
-   profiles from literature, calibration gate, then the founding-question
-   sweep: skills × {0–5}% grades in 1% steps × {12,3,6 o'clock} ×
-   10/15/20 ft × green speeds Stimp {8, 10, 12} (slow / typical / fast;
-   tour-speed 13+ can be added but collides with the downhill-runaway
+1. **Phase 1 — planar greens (COMPLETE, v2).** Physics core, planar green,
+   skill profiles from literature, calibration gate, then the
+   founding-question sweep: skills × {0–5}% grades in 1% steps ×
+   {12,3,6 o'clock} × 10/15/20 ft × green speeds Stimp {8, 10, 12}
+   (tour-speed 13+ can be added but collides with the downhill-runaway
    degeneracy below). (9 o'clock mirrors 3 o'clock by symmetry on a planar
-   green — note it, don't burn CPU on it.) Deliverable:
-   `results/optimal-rollout.md` + the pace-matrix page.
+   green — noted, not simulated.) Deliverables in `results/`:
+   `sweep-planar-v2.csv` + manifest, `findings-phase1.md` (headline answer),
+   `optimal-rollout.md`, `breakout-slope-clock.md`, `pace-matrix.html`.
 2. **Phase 2 — real greens.** Ingest `green_maps` outputs; hole/ball placement
    grids on real surfaces; per-green strategy maps.
 3. **Phase 3 — richer physics** as literature justifies: grain (anisotropic
@@ -199,12 +215,21 @@ for `Gradient` — never finite-difference the raw grid at sub-cell scale.
 
 - Every sweep writes, under `results/`, all committed: a CSV table (one row
   per cell of the parameter matrix — CSV because these are large numeric
-  tables meant for pandas/R/spreadsheets), a YAML run manifest (seed, trial
-  counts, physics constants, skill table used with literature citations,
-  git describe), and a human-readable markdown summary. Rule of thumb:
-  **YAML for configuration and manifests** (small, structured, commentable),
-  **CSV for bulk tabular results** — don't put a 10k-row table in YAML or a
-  run manifest in CSV.
+  tables meant for pandas/R/spreadsheets) and a YAML run manifest (seed,
+  trial counts, physics constants, skill table used with literature
+  citations, git describe). Rule of thumb: **YAML for configuration and
+  manifests** (small, structured, commentable), **CSV for bulk tabular
+  results** — don't put a 10k-row table in YAML or a run manifest in CSV.
+- `putttron report` regenerates ALL derived views from the sweep CSV(s):
+  `optimal-rollout.md` (full per-cell tables), `breakout-slope-clock.md`
+  (slope × direction tables at one Stimp), and `pace-matrix.html` (the
+  interactive heatmap page, rendered from
+  `cmd/putttron/pace_matrix.tmpl.html`). Never hand-edit these outputs —
+  change the generator and rerun.
+- `results/pace-matrix.html` is served at
+  <https://jhoblitt.github.io/putttron/> by `.github/workflows/pages.yml`
+  on every push to main. Workflow actions are SHA-pinned (pinact) and
+  actionlint-clean; Dependabot bumps the pins.
 - Report uncertainty: Monte Carlo standard errors on make % and expected
   strokes; enough trials that the optimal-rollout argmin is stable (check by
   re-running with a different seed).
@@ -231,6 +256,12 @@ for `Gradient` — never finite-difference the raw grid at sub-cell scale.
   vs. total directional dispersion; % distance error vs. absolute leave).
   `docs/literature.md` must state, per number, exactly what it measures;
   reconcile via the calibration gate, not by mixing definitions.
-- Skill sigmas are per-putt-length dependent in some models (distance control
-  degrades with length). Keep `Skill` extensible to length-dependent sigmas —
-  a constant-% model is the Phase 1 approximation.
+- Direction error IS length-dependent (σ_dir(L)² = σ0² + (σ1·L)²) — a
+  constant σ_dir fitted to 10–20 ft data badly under-makes short comeback
+  putts for weak skills, which biases the optimal-rollout answer short.
+  Distance error stays a constant % of length (Phase 1 approximation;
+  Broadie & Shin's piecewise-in-v² data would refine it).
+- Real high-handicap misses skew short and low-side (documented in
+  literature.md §2E); the symmetric Gaussian model can't reproduce that, so
+  hcp30's 3-footers over-make by ~10 points. Bias terms are Phase 3 work —
+  keep the caveat attached to weak-skill conclusions until then.
