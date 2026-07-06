@@ -14,11 +14,19 @@ package player
 // not stroke, dominates direction error. Scratch/mid interpolate the
 // anchors at the same fractions as B&B's execution scale (20% and 60% of
 // the tour→high gap).
+// hcp30 represents Broadie's Am3 band — scores 98–120, roughly 26–45 hcp,
+// centered ~30-35 — the HIGHEST handicap range with published putting data
+// anywhere; the ladder deliberately stops at this calibration frontier.
+// σ_dir fitted by `putttron fit` against a make% table synthesized from
+// the Am3 anchors and Shot Scope 25-hcp data (docs/literature.md §2E);
+// σ_dist tuned so the independent Am3 anchors validate (one-putt% ==
+// three-putt% at 12 ft, ~2.7 avg putts from 40 ft).
 var Profiles = []Skill{
 	{Name: "tour", DirSigmaDeg: 1.361, DirSigmaDegPerM: 0.147, DistSigmaPct: 0.065, DistSigmaFloor: 0.02},
 	{Name: "scratch", DirSigmaDeg: 1.477, DirSigmaDegPerM: 0.229, DistSigmaPct: 0.070, DistSigmaFloor: 0.02},
 	{Name: "mid", DirSigmaDeg: 1.710, DirSigmaDegPerM: 0.393, DistSigmaPct: 0.077, DistSigmaFloor: 0.025},
 	{Name: "high", DirSigmaDeg: 1.943, DirSigmaDegPerM: 0.557, DistSigmaPct: 0.085, DistSigmaFloor: 0.03},
+	{Name: "hcp30", DirSigmaDeg: 2.370, DirSigmaDegPerM: 0.268, DistSigmaPct: 0.165, DistSigmaFloor: 0.04},
 }
 
 func ProfileByName(name string) (Skill, bool) {

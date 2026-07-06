@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strings"
 
 	"github.com/jhoblitt/putttron/internal/green"
 	"github.com/jhoblitt/putttron/internal/physics"
@@ -28,9 +29,10 @@ func cmdFit(args []string) {
 	trials := fs.Int("trials", 40000, "trials per distance")
 	seed := fs.Uint64("seed", 1, "master RNG seed")
 	rollout := fs.Float64("rollout", 0.25, "pace policy: target m past hole")
+	skills := fs.String("skills", "tour,high,hcp30", "comma-separated skills to fit")
 	fs.Parse(args)
 
-	for _, name := range []string{"tour", "high"} {
+	for _, name := range strings.Split(*skills, ",") {
 		base, _ := player.ProfileByName(name)
 		pub := published[name]
 		var dists []float64
@@ -93,6 +95,17 @@ func cmdFit(args []string) {
 			fmt.Printf("  %2.0f ft: sim %.1f%% pub %.0f%% diff %+.1f\n", ft, 100*verify[i], 100*pub[ft], 100*d)
 		}
 		fmt.Printf("  rms=%.1f pts\n", 100*rms(sse, len(dists)))
+
+		if name == "hcp30" {
+			// Independent validation against Broadie's Am3 anchors that were
+			// NOT fitted: one-putt% == three-putt% at 12 ft, and ~2.7
+			// average putts from 40 ft.
+			field := sim.BuildField(env, fitted, sim.DefaultFieldOpts())
+			r12 := sim.EvalCell(env, physics.Vec2{X: -12 * 0.3048}, fitted, *rollout, field, 40000, *seed+13)
+			r40 := sim.EvalCell(env, physics.Vec2{X: -40 * 0.3048}, fitted, *rollout, field, 40000, *seed+17)
+			fmt.Printf("  Am3 anchors: 12 ft one-putt %.1f%% vs three-putt %.1f%% (want equal); 40 ft avg putts %.2f (want ~2.7)\n",
+				100*r12.Make, 100*r12.ThreePlus, r40.EStrokes)
+		}
 	}
 }
 

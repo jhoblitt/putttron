@@ -18,11 +18,18 @@ var calibDistances = []float64{3, 4, 5, 6, 8, 10, 15, 20, 30}
 var published = map[string]map[float64]float64{
 	"tour": {3: 0.96, 4: 0.88, 5: 0.77, 6: 0.66, 8: 0.50, 10: 0.40, 15: 0.23, 20: 0.15, 30: 0.07},
 	"high": {3: 0.84, 4: 0.65, 5: 0.50, 6: 0.39, 8: 0.27, 10: 0.20, 15: 0.11, 20: 0.06, 30: 0.02},
+	// hcp30 is SYNTHESIZED (docs/literature.md §2E): anchored on Broadie's
+	// Am3 band (50% one-putt at 3.8 ft) and shaped to sit just below Shot
+	// Scope's 25-hcp bucket table (3–6 ft 48%, 6–9 30%, 9–12 17%,
+	// 12–18 12%, 18–24 6%, 24–30 4%, 30+ 2%).
+	"hcp30": {3: 0.60, 4: 0.48, 5: 0.40, 6: 0.33, 8: 0.24, 10: 0.18, 15: 0.10, 20: 0.055, 30: 0.02},
 }
 
 // Source-matched green speeds: Bansal & Broadie calibrated pros on stimp 11
 // and ~90-shooters on stimp 9.
-var calibStimp = map[string]float64{"tour": 11, "scratch": 11, "mid": 9, "high": 9}
+var calibStimp = map[string]float64{
+	"tour": 11, "scratch": 11, "mid": 9, "high": 9, "hcp30": 9,
+}
 
 func cmdCalibrate(args []string) {
 	fs := newFlagSet("calibrate")

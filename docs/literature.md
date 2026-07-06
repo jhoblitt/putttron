@@ -197,6 +197,20 @@ published make% table to a needed σ per distance, and regresses σ² on L².
 | scratch | 1.477 | 0.229 | 1.63° | 7.0% | [estimate] interpolation |
 | mid (~10 hcp) | 1.710 | 0.393 | 2.06° | 7.7% | [estimate] interpolation |
 | high (~20 hcp / 90 shooter) | 1.943 | 0.557 | 2.58° | 8.5% | [primary] B&B amateur, σ_dir fitted; RMS 2.0 pts |
+| hcp30 (Broadie Am3, ~26–45 hcp) | 2.370 | 0.268 | 2.51° | 16.5% | [primary anchors + synthesized curve] see below |
+
+hcp30 targets are a synthesized curve (§2E): Broadie's Am3 50%-one-putt
+anchor at 3.8 ft shaped against Shot Scope's 25-hcp buckets; fit RMS 3.8
+pts. Independent validation against Am3 anchors NOT used in the fit:
+one-putt% vs three-putt% at 12 ft = 12.1% vs 12.8% (Broadie: equal at
+12 ft ✓); 2.60 avg putts from 40 ft (Broadie ~2.7, slightly optimistic).
+Known residual: sim makes ~70% of 3-footers vs Am3's ~60% — real Am3
+short-putt misses are driven by short-leave and low-side-read biases
+(§2E) that a symmetric Gaussian cannot reproduce; bias terms are a
+Phase-3 item. The ladder deliberately STOPS at hcp30: the Am3 band
+already aggregates scores up to 120 (~45 hcp) and no shot-level putting
+data is published beyond it, so a ~50-hcp tier would be pure
+extrapolation (dropped by decision 2026-07-06).
 
 Cross-check: tour σ(10 ft) = 1.43° effective vs 1.0° execution implies a
 ~1.0° read/imperfection component in quadrature — consistent with Gelman &

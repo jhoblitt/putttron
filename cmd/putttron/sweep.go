@@ -51,7 +51,21 @@ func cmdSweep(args []string) {
 	outDir := fs.String("out", "results", "output directory")
 	tag := fs.String("tag", "sweep", "output file basename")
 	stimpsF := fs.String("stimps", "8,10,12", "comma-separated stimp values")
+	skillsF := fs.String("skills", "", "comma-separated skill names (default: all)")
 	fs.Parse(args)
+
+	profiles := player.Profiles
+	if *skillsF != "" {
+		profiles = nil
+		for _, name := range strings.Split(*skillsF, ",") {
+			sk, ok := player.ProfileByName(strings.TrimSpace(name))
+			if !ok {
+				fmt.Fprintf(os.Stderr, "unknown skill %q\n", name)
+				os.Exit(2)
+			}
+			profiles = append(profiles, sk)
+		}
+	}
 
 	var stimps []float64
 	for _, s := range strings.Split(*stimpsF, ",") {
@@ -78,7 +92,7 @@ func cmdSweep(args []string) {
 			if slope == 0 {
 				cks = []int{12} // direction is meaningless on a flat green
 			}
-			for _, sk := range player.Profiles {
+			for _, sk := range profiles {
 				fmt.Fprintf(os.Stderr, "field: stimp=%g slope=%g° skill=%s (t=%s)\n",
 					stimp, slope, sk.Name, time.Since(start).Round(time.Second))
 				field := sim.BuildField(env, sk, sim.FieldOpts{
