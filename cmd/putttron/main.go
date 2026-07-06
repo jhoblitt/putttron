@@ -14,6 +14,8 @@ func main() {
 	switch os.Args[1] {
 	case "calibrate":
 		cmdCalibrate(os.Args[2:])
+	case "fit":
+		cmdFit(os.Args[2:])
 	case "sweep":
 		cmdSweep(os.Args[2:])
 	default:

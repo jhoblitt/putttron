@@ -161,12 +161,26 @@ Three-putt/one-putt crossover: ~35 ft tour, ~16 ft for 15–19 handicap.
 
 ## 5. Parameters adopted by putttron (Phase 1)
 
-| Skill | σ_dir (deg) | σ_dist (% of length) | Basis |
-|---|---|---|---|
-| tour | 1.00 | 6.5% | [primary] Bansal & Broadie pro |
-| scratch | 1.10 | 7.0% | [estimate] interpolation |
-| mid (~10 hcp) | 1.30 | 7.7% | [estimate] interpolation |
-| high (~20 hcp / 90 shooter) | 1.50 | 8.5% | [primary] Bansal & Broadie amateur |
+Direction error is an *effective* two-parameter model
+σ_dir(L)² = σ0² + (σ1·L)²: B&B's execution sigmas (1.0°/1.5°) model green
+reading as a separate term and their make% targets come from real greens,
+so a simulator without a read model must inflate σ_dir — and read error
+scales with break while execution error does not, hence the
+length-proportional term. `putttron fit` measures the effective angular
+make-window w(L) with one constant-σ simulation pass, converts the
+published make% table to a needed σ per distance, and regresses σ² on L².
+
+| Skill | σ0 (deg) | σ1 (deg/m) | σ at 10 ft | σ_dist (% of length) | Basis |
+|---|---|---|---|---|---|
+| tour | 1.361 | 0.147 | 1.43° | 6.5% | [primary] B&B pro, σ_dir fitted; RMS 0.8 pts (3–30 ft) |
+| scratch | 1.477 | 0.229 | 1.63° | 7.0% | [estimate] interpolation |
+| mid (~10 hcp) | 1.710 | 0.393 | 2.06° | 7.7% | [estimate] interpolation |
+| high (~20 hcp / 90 shooter) | 1.943 | 0.557 | 2.58° | 8.5% | [primary] B&B amateur, σ_dir fitted; RMS 2.0 pts |
+
+Cross-check: tour σ(10 ft) = 1.43° effective vs 1.0° execution implies a
+~1.0° read/imperfection component in quadrature — consistent with Gelman &
+Nolan's 1.5° angle-only fit and Karlsen's finding that reading, not stroke,
+dominates direction error.
 
 Implementation notes (all from the sources above):
 

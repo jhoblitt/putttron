@@ -14,13 +14,24 @@ import (
 // green-reading error, since they are calibrated against observed make/leave
 // data, not stroke mechanics alone).
 type Skill struct {
-	Name        string
-	DirSigmaDeg float64 // std dev of launch-line error, degrees
+	Name string
+	// Direction error grows with putt length (green-reading error scales
+	// with break, execution error does not):
+	// σ_dir(L)² = DirSigmaDeg² + (DirSigmaDegPerM·L)².
+	DirSigmaDeg     float64 // length-independent component, degrees
+	DirSigmaDegPerM float64 // length-proportional component, degrees per meter
 	// Distance-control error: std dev of realized roll distance as a
 	// fraction of intended distance, with an absolute floor (even tap-ins
 	// carry some absolute error).
 	DistSigmaPct   float64 // e.g. 0.06 = 6% of putt length
 	DistSigmaFloor float64 // meters
+}
+
+// DirSigmaAt returns the direction-error std dev in degrees for an intended
+// roll of dist meters.
+func (s Skill) DirSigmaAt(dist float64) float64 {
+	g := s.DirSigmaDegPerM * dist
+	return math.Sqrt(s.DirSigmaDeg*s.DirSigmaDeg + g*g)
 }
 
 // Perturb applies sampled execution error to a solved aim. Following Bansal
@@ -29,7 +40,7 @@ type Skill struct {
 // so a % error on v² is a % error on rolled length); direction error is a
 // Gaussian launch-angle error.
 func (s Skill) Perturb(aim Aim, intendedDist float64, rng *rand.Rand) (dir, speed float64) {
-	dir = aim.Dir + rng.NormFloat64()*s.DirSigmaDeg*math.Pi/180
+	dir = aim.Dir + rng.NormFloat64()*s.DirSigmaAt(intendedDist)*math.Pi/180
 	frac := math.Max(s.DistSigmaPct, s.DistSigmaFloor/math.Max(intendedDist, 1e-6))
 	v2 := aim.Speed * aim.Speed * (1 + rng.NormFloat64()*frac)
 	return dir, math.Sqrt(math.Max(v2, 1e-4))
