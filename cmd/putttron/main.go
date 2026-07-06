@@ -18,6 +18,8 @@ func main() {
 		cmdFit(os.Args[2:])
 	case "sweep":
 		cmdSweep(os.Args[2:])
+	case "report":
+		cmdReport(os.Args[2:])
 	default:
 		usage()
 	}
@@ -28,7 +30,9 @@ func usage() {
 
 commands:
   calibrate   flat-green make-%% by distance per skill (calibration gate)
+  fit         fit effective direction-sigma model to published make-%% tables
   sweep       full parameter-matrix sweep for optimal rollout
+  report      summarize a sweep CSV into results/optimal-rollout.md
 `)
 	os.Exit(2)
 }
