@@ -32,14 +32,18 @@ type groupKey struct {
 // cmdReport reads a sweep CSV and emits the optimal-rollout analysis.
 func cmdReport(args []string) {
 	fs := newFlagSet("report")
-	in := fs.String("in", "results/sweep-planar-v1.csv", "sweep CSV")
+	in := fs.String("in", "results/sweep-planar-v1.csv", "sweep CSV(s), comma-separated")
 	out := fs.String("out", "results/optimal-rollout.md", "output markdown")
 	fs.Parse(args)
 
-	rows, err := readSweep(*in)
-	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
-		os.Exit(1)
+	var rows []rptRow
+	for _, path := range strings.Split(*in, ",") {
+		r, err := readSweep(strings.TrimSpace(path))
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		rows = append(rows, r...)
 	}
 
 	groups := map[groupKey][]rptRow{}
@@ -150,8 +154,10 @@ func skillOrder(s string) int {
 		return 2
 	case "high":
 		return 3
+	case "hcp30":
+		return 4
 	}
-	return 4
+	return 5
 }
 
 func distinct(keys []groupKey, f func(groupKey) float64) []float64 {
