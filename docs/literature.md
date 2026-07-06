@@ -105,6 +105,27 @@ attributed to angle (no distance term); don't use as a pure aim sigma.
 - Leave distance after a miss: gamma, mean μ_d = exp(0.95 − 0.35·ln d +
   0.046·d − 1.6e−4·d²), shape k = 2.132 (CoV ≈ 0.68, mode 2–3 ft).
 
+### High-handicap (30+) putting data — how far calibration can reach
+
+M. Broadie, "Assessing Golfer Performance Using Golfmetrics" (Science and
+Golf V / WSC, 2008), http://www.columbia.edu/~mnb2/broadie/Assets/broadie_wscg_v_200804.pdf
+[primary]: ~40k shots, golfers scoring 64–120, banded Pro / Am1 (70–83) /
+Am2 (84–97) / Am3 (98–120 ≈ 26–45 hcp). Am3 putting anchors: 50% one-putt
+distance **3.8 ft** (Pro 8.2, Am2 5.1); one-putt% = three-putt% at **12 ft**
+(Pro 30); ~2.7 avg putts from 40 ft; **5.1 putting strokes lost/round vs
+scratch** out of a 31.0 total gap (16%) — putting skill *compresses* at
+high handicap (long-game direction error doubles Pro→Am3, 4.0°→8.1°,
+while the one-putt distance only halves). 60% of Am3 short-putt misses
+are on the low side (under-read break).
+
+Cross-validation: Shot Scope / MyGolfSpy publish make%-by-distance for
+handicap bands up to 25 (e.g. 3–6 ft 48%, 9–12 ft 17%, 3-putt 13–14%,
+~39 putts/round). No source publishes shot-level putting data beyond
+~45 hcp; a true 50-hcp tier would be an extrapolation beyond Am3,
+kept modest per the compression evidence. Novice bias notes [primary]:
+Suzuki et al. 2019 (Int. J. Golf Science 7(1)) — novices leave ~44% of
+putts short where pros deliberately overshoot 86%.
+
 ### Make % by distance [secondary — ShotLink + Broadie amateur data]
 
 | Distance (ft) | Tour | 90-shooter |
