@@ -164,7 +164,9 @@ any strategy claims.
 
 1. **Phase 1 — planar greens (current).** Physics core, planar green, skill
    profiles from literature, calibration gate, then the founding-question
-   sweep: skills × {0,1,2,3}° slopes × {12,3,6 o'clock} × 10/15/20 ft.
+   sweep: skills × {0,1,2,3}° slopes × {12,3,6 o'clock} × 10/15/20 ft ×
+   green speeds Stimp {8, 10, 12} (slow / typical / fast; tour-speed 13+ can
+   be added but collides with the downhill-runaway degeneracy below).
    (9 o'clock mirrors 3 o'clock by symmetry on a planar green — note it,
    don't burn CPU on it.) Deliverable: `results/optimal-rollout.md`.
 2. **Phase 2 — real greens.** Ingest `green_maps` outputs; hole/ball placement
@@ -193,10 +195,14 @@ for `Gradient` — never finite-difference the raw grid at sub-cell scale.
 
 ## Results & reporting
 
-- Every sweep writes a CSV (one row per cell of the parameter matrix) and a
-  human-readable markdown summary under `results/`, both committed. Include:
-  seed, trial count, skill table used (with literature citations), physics
-  constants.
+- Every sweep writes, under `results/`, all committed: a CSV table (one row
+  per cell of the parameter matrix — CSV because these are large numeric
+  tables meant for pandas/R/spreadsheets), a YAML run manifest (seed, trial
+  counts, physics constants, skill table used with literature citations,
+  git describe), and a human-readable markdown summary. Rule of thumb:
+  **YAML for configuration and manifests** (small, structured, commentable),
+  **CSV for bulk tabular results** — don't put a 10k-row table in YAML or a
+  run manifest in CSV.
 - Report uncertainty: Monte Carlo standard errors on make % and expected
   strokes; enough trials that the optimal-rollout argmin is stable (check by
   re-running with a different seed).
@@ -212,10 +218,11 @@ for `Gradient` — never finite-difference the raw grid at sub-cell scale.
 - Capture speed matters more than anything: dying putts use the full 108 mm
   hole width; a putt arriving at 1.5 m/s uses a fraction of it. Get
   `v_c(b)` right and unit-test it before believing any optimum.
-- Downhill putts on fast greens can fail to stop (a_d < (5/7)·g·sinθ);
-  detect and report "runaway" cells instead of integrating forever. At Stimp
-  10, ~3.15° is the theoretical no-stop slope — a 3° downhill cell at high
-  Stimp is near-degenerate and the numbers will be extreme, not wrong.
+- Downhill putts on fast greens can fail to stop (tanθ > 7·a_d/(5·g), i.e.
+  gravity along the slope beats rolling resistance); detect and report
+  "runaway" cells instead of integrating forever. At Stimp 10 that's ~4.5°,
+  at Stimp 13 ~3.5° — a 3° downhill cell at high Stimp is near-degenerate
+  and the numbers will be extreme, not wrong.
 - Error sigmas from different papers are not directly comparable (aim error
   vs. total directional dispersion; % distance error vs. absolute leave).
   `docs/literature.md` must state, per number, exactly what it measures;
