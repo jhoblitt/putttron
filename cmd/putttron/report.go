@@ -40,7 +40,8 @@ func cmdReport(args []string) {
 	in := fs.String("in", "results/sweep-planar-v1.csv", "sweep CSV(s), comma-separated")
 	out := fs.String("out", "results/optimal-rollout.md", "output markdown")
 	htmlOut := fs.String("html", "results/pace-matrix.html", "interactive pace-matrix page (empty to skip)")
-	htmlStimp := fs.Float64("stimp", 10, "green speed shown in the pace-matrix page")
+	breakoutOut := fs.String("breakout", "results/breakout-slope-clock.md", "slope-by-direction markdown tables (empty to skip)")
+	htmlStimp := fs.Float64("stimp", 10, "green speed shown in the pace-matrix and breakout views")
 	fs.Parse(args)
 
 	var rows []rptRow
@@ -134,6 +135,97 @@ func cmdReport(args []string) {
 		}
 		fmt.Printf("wrote %s (stimp %g)\n", *htmlOut, *htmlStimp)
 	}
+	if *breakoutOut != "" {
+		if err := writeBreakout(*breakoutOut, *htmlStimp, keys, groups); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		fmt.Printf("wrote %s (stimp %g)\n", *breakoutOut, *htmlStimp)
+	}
+}
+
+// writeBreakout emits the slope-by-direction markdown tables for one green
+// speed — the same view as the pace-matrix page, in committable text form.
+func writeBreakout(path string, stimp float64, keys []groupKey, groups map[groupKey][]rptRow) error {
+	skills, lengths, slopes, clocks := axesAt(stimp, keys)
+	var b strings.Builder
+	fmt.Fprintf(&b, "# Optimal rollout by slope and putt direction (Stimp %g)\n\n", stimp)
+	fmt.Fprintf(&b, "Optimal target rollout in inches (make%% / 3-putt%%); \"die\" = aim to have\n")
+	fmt.Fprintf(&b, "the ball die at the front edge. Clock: 12 = ball above the hole putting\n")
+	fmt.Fprintf(&b, "downhill, 6 = below putting uphill, 3 = sidehill (9 o'clock mirrors it).\n")
+	fmt.Fprintf(&b, "Slope is %% grade. Green speed barely moves these (see findings).\n\n")
+	clockName := map[int]string{12: "12 o'clock (downhill)", 3: "3 o'clock (sidehill)", 6: "6 o'clock (uphill)"}
+	for _, sk := range skills {
+		fmt.Fprintf(&b, "## %s\n\n", sk)
+		for _, ft := range lengths {
+			fmt.Fprintf(&b, "**%.0f ft**\n\n| slope |", ft)
+			for _, c := range clocks {
+				fmt.Fprintf(&b, " %s |", clockName[c])
+			}
+			fmt.Fprintf(&b, "\n|---|")
+			for range clocks {
+				fmt.Fprintf(&b, "---|")
+			}
+			fmt.Fprintf(&b, "\n")
+			for _, s := range slopes {
+				if s == 0 {
+					fmt.Fprintf(&b, "| flat |")
+				} else {
+					fmt.Fprintf(&b, "| %.0f%% |", s)
+				}
+				for _, c := range clocks {
+					g, ok := groups[groupKey{stimp, s, c, ft, sk}]
+					if !ok {
+						fmt.Fprintf(&b, " — |")
+						continue
+					}
+					sort.Slice(g, func(i, j int) bool { return g[i].rollout < g[j].rollout })
+					best, roStar, _, _ := argminSE(g)
+					r := g[best]
+					label := "die"
+					if in := roStar * 39.37; in >= 0.5 {
+						label = fmt.Sprintf("%.0f in", in)
+					}
+					fmt.Fprintf(&b, " **%s** (%.0f%% / %.0f%%) |", label, 100*r.make_, 100*r.threePlus)
+				}
+				fmt.Fprintf(&b, "\n")
+			}
+			fmt.Fprintf(&b, "\n")
+		}
+	}
+	return os.WriteFile(path, []byte(b.String()), 0o644)
+}
+
+// axesAt derives the skill/length/slope/clock axes present at one stimp.
+func axesAt(stimp float64, keys []groupKey) (skills []string, lengths, slopes []float64, clocks []int) {
+	lengthSet, slopeSet := map[float64]bool{}, map[float64]bool{}
+	clockSet := map[int]bool{}
+	for _, k := range keys {
+		if k.stimp != stimp {
+			continue
+		}
+		seen := false
+		for _, s := range skills {
+			if s == k.skill {
+				seen = true
+			}
+		}
+		if !seen {
+			skills = append(skills, k.skill)
+		}
+		lengthSet[k.lengthFt] = true
+		slopeSet[k.slope] = true
+		clockSet[k.clock] = true
+	}
+	sort.Slice(skills, func(i, j int) bool { return skillOrder(skills[i]) < skillOrder(skills[j]) })
+	lengths = sortedKeys(lengthSet)
+	slopes = sortedKeys(slopeSet)
+	for _, c := range []int{12, 3, 6} {
+		if clockSet[c] {
+			clocks = append(clocks, c)
+		}
+	}
+	return
 }
 
 //go:embed pace_matrix.tmpl.html
@@ -161,8 +253,6 @@ func writePaceMatrix(path string, stimp float64, inputs string, keys []groupKey,
 		Short float64 `json:"short"`
 	}
 	data := map[string]cell{}
-	var skills []string
-	lengthSet, slopeSet := map[float64]bool{}, map[float64]bool{}
 	for _, k := range keys {
 		if k.stimp != stimp {
 			continue
@@ -178,30 +268,18 @@ func writePaceMatrix(path string, stimp float64, inputs string, keys []groupKey,
 			E: math.Round(1000*r.eStrokes) / 1000, Past: math.Round(100*r.meanPastMiss) / 100,
 			Short: math.Round(100 * r.pctShort),
 		}
-		seen := false
-		for _, s := range skills {
-			if s == k.skill {
-				seen = true
-			}
-		}
-		if !seen {
-			skills = append(skills, k.skill)
-		}
-		lengthSet[k.lengthFt] = true
-		slopeSet[k.slope] = true
 	}
 	if len(data) == 0 {
 		return fmt.Errorf("no rows at stimp %g for pace-matrix page", stimp)
 	}
-	sort.Slice(skills, func(i, j int) bool { return skillOrder(skills[i]) < skillOrder(skills[j]) })
+	skills, lengths, slopeVals, _ := axesAt(stimp, keys)
 
 	skillPairs := make([][2]string, len(skills))
 	for i, s := range skills {
 		skillPairs[i] = [2]string{s, skillDesc[s]}
 	}
-	lengths := sortedKeys(lengthSet)
 	var slopes [][2]any
-	for _, s := range sortedKeys(slopeSet) {
+	for _, s := range slopeVals {
 		label := "flat"
 		if s != 0 {
 			label = fmt.Sprintf("%.0f%%", s)
