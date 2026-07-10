@@ -103,8 +103,11 @@ td.blank{background:transparent;color:var(--ink-3);cursor:auto}
 
 <p class="foot">Slope is % grade (rise over run). Optima are sub-grid refined by a
 parabola through the swept 4-in rollout grid; the tooltip's plateau range is the honest
-uncertainty. Flat greens have no direction, so only one cell. Physics: Penner (2002) rolling model, Holmes/Penner capture;
+uncertainty (paired-sample SE under common random numbers). Flat greens have no direction, so only one cell. Physics: Penner (2002) rolling model, Holmes/Penner capture;
 error models calibrated to Bansal &amp; Broadie ShotLink data and published make-% tables.
+Two modeling caveats: optima are conditional on a fixed follow-up lag policy
+(0.25&nbsp;m, sensitivity-checked in the findings), and direction error is calibrated on
+flat greens — steep-slope cells assume read error does not grow with break.
 Source: {{.SourceNote}} — full tables in
 <code>results/optimal-rollout.md</code>, narrative in <code>results/findings-phase1.md</code>
 (github.com/jhoblitt/putttron).</p>

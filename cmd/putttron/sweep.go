@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -39,6 +40,48 @@ type sweepRow struct {
 	lengthFt float64
 	rolloutM float64
 	res      sim.CellResult
+
+	// Paired comparison against the same (clock, length) group's best
+	// rollout: ΔE = E − E_best and its paired SE. Common random numbers
+	// make the trials paired across the rollout axis, so this SE — not
+	// the marginal EStrokesSE — is the yardstick for whether a rollout
+	// is distinguishable from the optimum.
+	dEBest   float64
+	dEPairSE float64
+}
+
+// pairGroup fills dEBest/dEPairSE for one CRN group (rows sharing everything
+// but rollout) from the per-trial stroke vectors, then drops the vectors.
+func pairGroup(g []*sweepRow) {
+	best := -1
+	for i, r := range g {
+		if r.res.SolveOK && (best < 0 || r.res.EStrokes < g[best].res.EStrokes) {
+			best = i
+		}
+	}
+	if best < 0 {
+		return
+	}
+	ref := g[best].res.Strokes
+	for _, r := range g {
+		if !r.res.SolveOK || len(r.res.Strokes) != len(ref) {
+			continue
+		}
+		var sum, sumSq float64
+		for t, s := range r.res.Strokes {
+			d := s - ref[t]
+			sum += d
+			sumSq += d * d
+		}
+		nf := float64(len(ref))
+		mean := sum / nf
+		r.dEBest = mean
+		varD := sumSq/nf - mean*mean
+		r.dEPairSE = math.Sqrt(math.Max(varD, 0) / nf)
+	}
+	for _, r := range g {
+		r.res.Strokes = nil
+	}
 }
 
 func cmdSweep(args []string) {
@@ -119,6 +162,14 @@ func cmdSweep(args []string) {
 						uint64(c.clock)<<8 ^ uint64(c.lengthFt)
 					c.res = sim.EvalCell(env, ball, sk, c.rolloutM, field, *trials, cellSeed)
 				})
+				crn := map[[2]float64][]*sweepRow{}
+				for i := range cells {
+					k := [2]float64{float64(cells[i].clock), cells[i].lengthFt}
+					crn[k] = append(crn[k], &cells[i])
+				}
+				for _, g := range crn {
+					pairGroup(g)
+				}
 				rows = append(rows, cells...)
 			}
 		}
@@ -136,13 +187,14 @@ func cmdSweep(args []string) {
 
 func writeCSV(path string, rows []sweepRow) {
 	var b strings.Builder
-	b.WriteString("stimp,skill,slope_pct,clock,length_ft,rollout_m,solve_ok,make,make_se,three_plus,exp_strokes,exp_strokes_se,mean_past_miss_m,pct_miss_short,mean_leave_m\n")
+	b.WriteString("stimp,skill,slope_pct,clock,length_ft,rollout_m,solve_ok,make,make_se,three_plus,exp_strokes,exp_strokes_se,mean_past_miss_m,pct_miss_short,mean_leave_m,de_vs_best,de_pair_se\n")
 	for _, r := range rows {
-		fmt.Fprintf(&b, "%g,%s,%g,%d,%g,%.2f,%t,%.5f,%.5f,%.5f,%.5f,%.5f,%.4f,%.4f,%.4f\n",
+		fmt.Fprintf(&b, "%g,%s,%g,%d,%g,%.2f,%t,%.5f,%.5f,%.5f,%.5f,%.5f,%.4f,%.4f,%.4f,%.5f,%.5f\n",
 			r.stimp, r.skill, r.slopePct, r.clock, r.lengthFt, r.rolloutM,
 			r.res.SolveOK, r.res.Make, r.res.MakeSE, r.res.ThreePlus,
 			r.res.EStrokes, r.res.EStrokesSE,
-			r.res.MeanPastMiss, r.res.PctMissShort, r.res.MeanLeave)
+			r.res.MeanPastMiss, r.res.PctMissShort, r.res.MeanLeave,
+			r.dEBest, r.dEPairSE)
 	}
 	if err := os.WriteFile(path, []byte(b.String()), 0o644); err != nil {
 		fmt.Fprintln(os.Stderr, err)

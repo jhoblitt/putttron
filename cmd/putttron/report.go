@@ -25,6 +25,8 @@ type rptRow struct {
 	eStrokes, eSE      float64
 	meanPastMiss       float64
 	pctShort, meanLeav float64
+	dE, dSE            float64 // paired ΔE vs group's best rollout (CRN)
+	hasPaired          bool
 }
 
 type groupKey struct {
@@ -90,11 +92,17 @@ func cmdReport(args []string) {
 	fmt.Fprintf(&b, "minimizes expected putts to hole out; rollout is path length past the\n")
 	fmt.Fprintf(&b, "hole of the error-free putt, sub-grid refined by a parabola through the\n")
 	fmt.Fprintf(&b, "0.1 m sweep grid around the argmin. \"plateau\" is the rollout range whose\n")
-	fmt.Fprintf(&b, "expected strokes are within one Monte Carlo SE of the minimum —\n")
+	fmt.Fprintf(&b, "expected strokes are within one paired-difference Monte Carlo SE of the\n")
+	fmt.Fprintf(&b, "minimum (paired via common random numbers across the rollout axis) —\n")
 	fmt.Fprintf(&b, "anywhere in it is statistically as good as the optimum. \"miss past\"\n")
 	fmt.Fprintf(&b, "is the mean distance past the hole of missed putts at the optimum\n")
 	fmt.Fprintf(&b, "(the founding question), with the share of misses left short.\n\n")
 	fmt.Fprintf(&b, "Clock: 12 = above the hole (downhill putt), 6 = below (uphill), 3 = sidehill.\n\n")
+	fmt.Fprintf(&b, "Caveats: optima are conditional on the follow-up pace policy in the\n")
+	fmt.Fprintf(&b, "manifest (`followup_lag_rollout_m`) — later putts are not co-optimized;\n")
+	fmt.Fprintf(&b, "and direction error is calibrated on flat greens only, so per-slope\n")
+	fmt.Fprintf(&b, "cells assume read error does not grow with break. See the caveats in\n")
+	fmt.Fprintf(&b, "`findings-phase1.md`.\n\n")
 
 	for _, stimp := range distinct(keys, func(k groupKey) float64 { return k.stimp }) {
 		fmt.Fprintf(&b, "## Stimp %g\n\n", stimp)
@@ -154,6 +162,10 @@ func writeBreakout(path string, stimp float64, keys []groupKey, groups map[group
 	fmt.Fprintf(&b, "the ball die at the front edge. Clock: 12 = ball above the hole putting\n")
 	fmt.Fprintf(&b, "downhill, 6 = below putting uphill, 3 = sidehill (9 o'clock mirrors it).\n")
 	fmt.Fprintf(&b, "Slope is %% grade. Green speed barely moves these (see findings).\n\n")
+	fmt.Fprintf(&b, "Caveat: direction error is calibrated on flat greens and does not grow\n")
+	fmt.Fprintf(&b, "with break, so the steeper cells are the least certain — they assume a\n")
+	fmt.Fprintf(&b, "player reads a 5%% sidehill as well as a flat putt. Optima are also\n")
+	fmt.Fprintf(&b, "conditional on the fixed follow-up lag policy (see findings-phase1.md).\n\n")
 	clockName := map[int]string{12: "12 o'clock (downhill)", 3: "3 o'clock (sidehill)", 6: "6 o'clock (uphill)"}
 	for _, sk := range skills {
 		fmt.Fprintf(&b, "## %s\n\n", sk)
@@ -351,10 +363,18 @@ func argminSE(g []rptRow) (best int, roStar, lo, hi float64) {
 			roStar = math.Max(g[best-1].rollout, math.Min(g[best+1].rollout, v))
 		}
 	}
+	// Plateau: rollouts indistinguishable from the optimum. With paired
+	// columns (CRN differencing done at sweep time) the yardstick is each
+	// row's paired ΔE SE — much tighter than the marginal SE, which
+	// overstates the plateau because CRN correlates the E estimates.
 	min, se := g[best].eStrokes, g[best].eSE
 	lo, hi = g[best].rollout, g[best].rollout
 	for _, r := range g {
-		if r.eStrokes <= min+se {
+		ok := r.eStrokes <= min+se
+		if r.hasPaired {
+			ok = r.dE <= r.dSE
+		}
+		if ok {
 			if r.rollout < lo {
 				lo = r.rollout
 			}
@@ -416,13 +436,17 @@ func readSweep(path string) ([]rptRow, error) {
 			return v
 		}
 		clock, _ := strconv.Atoi(r[3])
-		rows = append(rows, rptRow{
+		row := rptRow{
 			stimp: p(0), skill: r[1], slope: p(2), clock: clock,
 			lengthFt: p(4), rollout: p(5), solveOK: r[6] == "true",
 			make_: p(7), makeSE: p(8), threePlus: p(9),
 			eStrokes: p(10), eSE: p(11),
 			meanPastMiss: p(12), pctShort: p(13), meanLeav: p(14),
-		})
+		}
+		if len(r) >= 17 {
+			row.dE, row.dSE, row.hasPaired = p(15), p(16), true
+		}
+		rows = append(rows, row)
 	}
 	return rows, nil
 }

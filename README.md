@@ -29,8 +29,9 @@ ones at 15 ft and beyond.
 ## Usage
 
 ```
-go run ./cmd/putttron sweep   # run the parameter-matrix sweep
-go run ./cmd/putttron report --calibration
+go run ./cmd/putttron calibrate   # calibration gate vs published make-% tables
+go run ./cmd/putttron sweep       # run the parameter-matrix sweep
+go run ./cmd/putttron report -in results/sweep-planar-v3.csv
 ```
 
 Results land in `results/`.

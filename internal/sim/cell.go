@@ -22,6 +22,11 @@ type CellResult struct {
 	MeanPastMiss float64 // mean past-hole distance among misses that finished past, m
 	PctMissShort float64 // fraction of misses that finished short of the hole
 	MeanLeave    float64 // mean distance from hole among misses, m
+
+	// Per-trial stroke counts, in trial order. Under common random numbers
+	// trial t is the same error draw across rollouts, so differencing two
+	// cells' Strokes gives the paired ΔE distribution.
+	Strokes []float64
 }
 
 // EvalCell solves the aim for one putt under a target-rollout pace policy and
@@ -50,6 +55,7 @@ func EvalCell(env *physics.Env, ball physics.Vec2, skill player.Skill,
 
 	var (
 		makes             int
+		perTrial          = make([]float64, 0, n)
 		sumStrokes, sumSq float64
 		sumMissNext       float64 // Σ (1 − P(make next)) over misses
 		nPast, nShort     int
@@ -81,11 +87,13 @@ func EvalCell(env *physics.Env, ball physics.Vec2, skill player.Skill,
 		}
 		sumStrokes += strokes
 		sumSq += strokes * strokes
+		perTrial = append(perTrial, strokes)
 	}
 
 	nf := float64(n)
 	res := CellResult{
 		SolveOK:   true,
+		Strokes:   perTrial,
 		Make:      float64(makes) / nf,
 		ThreePlus: sumMissNext / nf,
 		EStrokes:  sumStrokes / nf,
