@@ -150,10 +150,13 @@ knife edge.
 - **Expected strokes**: follow-up putts are scored with an
   **expected-strokes field** E(r,ψ) on a polar grid around the hole, built
   per (green config, skill) by value iteration — every putt in the field
-  plays the same skill's errors under a fixed lag pace policy (0.25 m). A
-  first-putt miss looks up E at its rest position; this is what penalizes
-  blasting it 6 ft past. The field also carries P(make next) for 3-putt
-  probability.
+  plays the same skill's errors under a fixed lag pace policy (`sweep -lag`,
+  default 0.25 m). A first-putt miss looks up E at its rest position; this
+  is what penalizes blasting it 6 ft past. The field also carries
+  P(make next) for 3-putt probability. First-putt optima are therefore
+  *conditional on that follow-up policy*, not a jointly optimized strategy
+  — state this wherever results are published, and check it with `-lag`
+  sensitivity runs.
 - **Sweep**: for each (stimp × skill × slope × clock × putt length), sweep
   target rollout 0–1.2 m in 0.1 m steps with **common random numbers**
   (same seed across the rollout axis → smooth E-vs-rollout curves); report
@@ -161,7 +164,11 @@ knife edge.
   (sub-grid refined by a parabola through the argmin's neighbors — sound
   under CRN) **and** the mean distance past the hole of missed putts at that
   optimum (the founding question asks for the latter — note it differs from
-  the error-free target rollout).
+  the error-free target rollout). The sweep also differences per-trial
+  stroke counts against the group's best rollout (CRN makes trials paired)
+  and emits paired ΔE + SE columns (`de_vs_best`, `de_pair_se`); the
+  report's "plateau" uses this paired SE — the marginal per-row SE
+  overstates the equivalence band because CRN correlates the estimates.
 - Concurrency: trials are embarrassingly parallel; `sim.ParallelDo` worker
   pool over cells/nodes, one deterministic RNG per work item derived from
   the master seed.
@@ -256,6 +263,13 @@ for `Gradient` — never finite-difference the raw grid at sub-cell scale.
   vs. total directional dispersion; % distance error vs. absolute leave).
   `docs/literature.md` must state, per number, exactly what it measures;
   reconcile via the calibration gate, not by mixing definitions.
+- The effective σ_dir (which absorbs green-reading error) is calibrated on
+  flat greens only and does not grow with break — per-slope cells in the
+  breakout/pace-matrix views extrapolate a flat calibration into sloped
+  conditions and are the least certain results; the fall-line-attractor
+  finding (downhill putts self-correct) is the most sensitive to this.
+  Keep the caveat attached until a break-dependent read-error model is
+  calibrated (Phase 3).
 - Direction error IS length-dependent (σ_dir(L)² = σ0² + (σ1·L)²) — a
   constant σ_dir fitted to 10–20 ft data badly under-makes short comeback
   putts for weak skills, which biases the optimal-rollout answer short.
