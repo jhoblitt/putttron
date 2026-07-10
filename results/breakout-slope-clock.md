@@ -5,6 +5,11 @@ the ball die at the front edge. Clock: 12 = ball above the hole putting
 downhill, 6 = below putting uphill, 3 = sidehill (9 o'clock mirrors it).
 Slope is % grade. Green speed barely moves these (see findings).
 
+Caveat: direction error is calibrated on flat greens and does not grow
+with break, so the steeper cells are the least certain — they assume a
+player reads a 5% sidehill as well as a flat putt. Optima are also
+conditional on the fixed follow-up lag policy (see findings-phase1.md).
+
 ## tour
 
 **10 ft**

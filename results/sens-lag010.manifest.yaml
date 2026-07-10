@@ -1,11 +1,11 @@
-generated: 2026-07-06T15:21:49-07:00
-git: ff69760
+generated: 2026-07-10T10:22:10-07:00
+git: 8d94fae
 seed: 1
 trials_per_cell: 8000
 field_trials_per_node: 1500
 field_sweeps: 5
-followup_lag_rollout_m: 0.25
-stimps: [8, 10, 12]
+followup_lag_rollout_m: 0.1
+stimps: [10]
 physics:
   capture_vc0_ms: 1.63  # Penner 2002 / Holmes 1991
   stimp_release_ms: 1.83

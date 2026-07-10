@@ -192,7 +192,9 @@ effective direction sigmas to those published tables in the first place.
    (tour-speed 13+ can be added but collides with the downhill-runaway
    degeneracy below). (9 o'clock mirrors 3 o'clock by symmetry on a planar
    green — noted, not simulated.) Deliverables in `results/`:
-   `sweep-planar-v2.csv` + manifest, `findings-phase1.md` (headline answer),
+   `sweep-planar-v3.csv` + manifest (v3 = v2's trials + paired ΔE columns),
+   lag-policy/seed sensitivity slices (`sens-*.csv`), `findings-phase1.md`
+   (headline answer),
    `optimal-rollout.md`, `breakout-slope-clock.md`, `pace-matrix.html`.
 2. **Phase 2 — real greens.** Ingest `green_maps` outputs; hole/ball placement
    grids on real surfaces; per-green strategy maps.

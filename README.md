@@ -22,9 +22,9 @@ target rollout is skill- and length-dependent, not a constant. Tour-caliber
 putters should play 10–20 ft putts to finish ~14–15 in past; a ~10
 handicap ~12 in at 10 ft tapering to ~5 in at 20 ft; 20+ handicaps should
 play dying pace at 15–20 ft. Green speed barely moves the optimum, and the
-optimum is a wide plateau (±4–8 in costs nothing measurable). Pelz's
-17 inches is fine advice for strong putters and too aggressive for weak
-ones at 15 ft and beyond.
+stakes near it are tiny (being 4 in off costs ~0.004 putts — one stroke
+per ~250 putts). Pelz's 17 inches is fine advice for strong putters and
+too aggressive for weak ones at 15 ft and beyond.
 
 ## Usage
 

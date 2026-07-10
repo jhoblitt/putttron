@@ -1,14 +1,18 @@
 # Phase 1 findings: how far past the hole should you putt?
 
-Data: `sweep-planar-v2.csv` (manifest alongside; seed 1, 8000 trials/cell,
+Data: `sweep-planar-v3.csv` (manifest alongside; seed 1, 8000 trials/cell,
 720 parameter groups — Stimp 8/10/12 × slopes 0–5% grade in 1% steps ×
 12/3/6 o'clock × 10/15/20 ft × 13 rollout targets × 5 skill tiers — zero
-solver failures). Full per-cell tables in `optimal-rollout.md`; calibration
-gate in `calibration.md`. "Target rollout" = the distance past the hole the
-error-free putt would finish (the pace you *aim* for); "miss past" = mean
-distance past the hole of simulated missed putts at that target. Reported
-optima are sub-grid refined (parabola through the 0.1 m sweep grid around
-the argmin); the one-SE plateau is the honest uncertainty.
+solver failures; identical trial outcomes to the retired v2, plus paired
+ΔE-vs-best columns). Full per-cell tables in `optimal-rollout.md`;
+calibration gate in `calibration.md`. "Target rollout" = the distance past
+the hole the error-free putt would finish (the pace you *aim* for);
+"miss past" = mean distance past the hole of simulated missed putts at
+that target. Reported optima are sub-grid refined (parabola through the
+0.1 m sweep grid around the argmin); uncertainty is measured with
+paired-difference SEs — common random numbers make the trials paired
+across the rollout axis, so ΔE between rollouts is resolved far more
+precisely than the marginal per-cell SE suggests.
 
 ## The headline answer (10–20 ft putts)
 
@@ -28,11 +32,16 @@ tour/scratch and up to ~2.5 ft for the weaker tiers (their distance-control
 sigma is larger, so the misses that do go long go well long even when the
 target is the front edge).
 
-**The optimum is a plateau, not a point.** Within each cell, a ±4–8 in band
-of targets is statistically indistinguishable from the optimum (one Monte
-Carlo SE ≈ 0.006 putts). Pace precision matters much less than picking the
-right *regime*: firm for good putters at 10 ft, dying pace for weak putters
-at 20 ft.
+**The optimum is a practical plateau, not a statistical one.** The paired
+analysis resolves the optimum finely — 76% of targets one 4-in grid step
+from the best are statistically distinguishable from it — but the *stakes*
+near the optimum are tiny: being 4 in off costs a median 0.004 putts
+(p90 0.010), and 8 in off a median 0.015 (p90 0.034). One extra stroke per
+~250 putts is not worth chasing; pace precision matters much less than
+picking the right *regime*: firm for good putters at 10 ft, dying pace for
+weak putters at 20 ft. (An earlier draft called a ±4–8 in band
+"statistically indistinguishable" — that used the marginal Monte Carlo SE,
+which overstates the equivalence band under common random numbers.)
 
 ## Structure in the result
 
@@ -84,8 +93,24 @@ at 20 ft.
   pace somewhat (Pelz's argument) — Phase 2/3 material.
 - Symmetric Gaussian error model: real high-handicap misses skew short and
   low; hcp30 conclusions are the least certain (see docs/literature.md §5).
-- Follow-up putts always use a fixed 0.25 m lag policy; the swept policy
-  applies to the first putt only.
+- **Optima are conditional on the follow-up policy** — later putts play a
+  fixed lag target (0.25 m), not a co-optimized strategy; the swept policy
+  applies to the first putt only. Measured sensitivity (Stimp 10, 240
+  groups, `sens-lag010.csv`/`sens-lag040.csv`): re-running with the lag
+  policy at 0.10 m or 0.40 m moves the per-cell refined optimum by a
+  median 0.0/−0.4 in respectively, moves headline medians ≤ ~1 in, and
+  shifts a cell by more than one 4-in grid step in 0/240 (lag 0.10) and
+  2/240 (lag 0.40) cases — the recommendation is insensitive to any
+  reasonable comeback pace.
+- **Direction error is calibrated on flat greens** and does not grow with
+  break: a 5% sidehill is read as well as a flat putt. Per-slope cells
+  extrapolate the flat calibration, so they are the least certain results
+  — the fall-line-attractor finding (downhill putts self-correct) is the
+  most sensitive to this. No published make%-by-slope data per skill tier
+  exists to calibrate a break-dependent read model against; Phase 3.
+- Argmin stability verified against an independent seed (`sens-seed2.csv`,
+  Stimp 10): median optimum shift 0.0 in, no cell beyond one grid step,
+  headline medians within 0.5 in.
 - Miss-leave distributions are somewhat tighter than Fearing et al.'s
   ShotLink gamma model (mean leave ~0.5 m vs ~0.65 m from 20 ft),
   i.e. real tour misses spread a bit more than simulated ones — our
@@ -105,6 +130,14 @@ report` from the sweep CSV.
 ## Reproduce
 
 ```
-go run ./cmd/putttron sweep -trials 8000 -fieldtrials 1500 -fieldsweeps 5 -seed 1 -tag sweep-planar-v2
-go run ./cmd/putttron report -in results/sweep-planar-v2.csv
+go run ./cmd/putttron sweep -trials 8000 -fieldtrials 1500 -fieldsweeps 5 -seed 1 -tag sweep-planar-v3
+go run ./cmd/putttron report -in results/sweep-planar-v3.csv
+```
+
+Sensitivity runs (Stimp 10 slice):
+
+```
+go run ./cmd/putttron sweep -trials 8000 -fieldtrials 1500 -fieldsweeps 5 -seed 1 -stimps 10 -lag 0.10 -tag sens-lag010
+go run ./cmd/putttron sweep -trials 8000 -fieldtrials 1500 -fieldsweeps 5 -seed 1 -stimps 10 -lag 0.40 -tag sens-lag040
+go run ./cmd/putttron sweep -trials 8000 -fieldtrials 1500 -fieldsweeps 5 -seed 2 -stimps 10 -tag sens-seed2
 ```
