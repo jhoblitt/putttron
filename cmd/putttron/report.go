@@ -431,11 +431,18 @@ func readSweep(path string) ([]rptRow, error) {
 		if i == 0 {
 			continue
 		}
+		var perr error
 		p := func(j int) float64 {
-			v, _ := strconv.ParseFloat(r[j], 64)
+			v, err := strconv.ParseFloat(r[j], 64)
+			if err != nil && perr == nil {
+				perr = fmt.Errorf("%s:%d: column %d: %v", path, i+1, j+1, err)
+			}
 			return v
 		}
-		clock, _ := strconv.Atoi(r[3])
+		clock, err := strconv.Atoi(r[3])
+		if err != nil {
+			return nil, fmt.Errorf("%s:%d: column 4: %v", path, i+1, err)
+		}
 		row := rptRow{
 			stimp: p(0), skill: r[1], slope: p(2), clock: clock,
 			lengthFt: p(4), rollout: p(5), solveOK: r[6] == "true",
@@ -445,6 +452,9 @@ func readSweep(path string) ([]rptRow, error) {
 		}
 		if len(r) >= 17 {
 			row.dE, row.dSE, row.hasPaired = p(15), p(16), true
+		}
+		if perr != nil {
+			return nil, perr
 		}
 		rows = append(rows, row)
 	}
