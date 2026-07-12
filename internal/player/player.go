@@ -90,12 +90,13 @@ func solveFrom(env *physics.Env, ball physics.Vec2, rollout, dist float64, aim A
 		maxIter = 60
 	)
 
-	// residual: (lateral miss, wanted-minus-actual path length). ok=false
-	// on runaway.
+	// residual: (lateral miss, wanted-minus-actual path length). ok=false on
+	// runaway or when the ball leaves the green — both mean "too hot", so
+	// the caller backs the speed off.
 	residual := func(a Aim) (lat, lenErr float64, ok bool) {
 		vel := physics.Vec2{X: math.Cos(a.Dir), Y: math.Sin(a.Dir)}.Scale(a.Speed)
 		out := env.Roll(ball, vel, false)
-		if out.Runaway {
+		if out.Runaway || out.OffGreen {
 			return 0, 0, false
 		}
 		tdir := out.ClosestVel

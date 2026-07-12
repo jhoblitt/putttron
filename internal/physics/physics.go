@@ -87,9 +87,10 @@ func NewEnv(surf green.Surface, vc0 float64) *Env {
 }
 
 type Outcome struct {
-	Holed   bool
-	Runaway bool // never came to rest (fell off the model or slope too steep)
-	Rest    Vec2 // valid if !Holed && !Runaway
+	Holed    bool
+	Runaway  bool // never came to rest (slope too steep for the whole time budget)
+	OffGreen bool // left the surface's valid region; Rest holds the exit point
+	Rest     Vec2 // valid if !Holed && !Runaway
 
 	// Diagnostics of the pass nearest the hole: closest center-to-center
 	// distance, position and velocity there, and path length from launch to
@@ -153,8 +154,14 @@ func (e *Env) Roll(pos, vel Vec2, capture bool) Outcome {
 	dt := e.Dt
 	inDisk := false
 	lastMovingVel := vel
+	bounds, bounded := e.Surf.(green.Bounded)
 
 	for t := 0.0; t < e.MaxTime; t += dt {
+		if bounded && !bounds.OnGreen(pos.X, pos.Y) {
+			out.OffGreen = true
+			out.Rest = pos
+			return out
+		}
 		if vel.Norm() >= 0.05 {
 			lastMovingVel = vel
 		}

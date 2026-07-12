@@ -32,6 +32,14 @@ func clockPos(clock int, length float64) physics.Vec2 {
 	panic("bad clock")
 }
 
+// cellSeedFor derives the common-random-numbers seed for one sweep cell:
+// identical across the rollout axis, so re-running any single cell with its
+// seed reproduces the sweep's exact trial sequence.
+func cellSeedFor(master uint64, stimp, slopePct float64, clock int, lengthFt float64) uint64 {
+	return master<<32 ^ uint64(stimp*100)<<20 ^ uint64(slopePct)<<16 ^
+		uint64(clock)<<8 ^ uint64(lengthFt)
+}
+
 type sweepRow struct {
 	stimp    float64
 	skill    string
@@ -161,11 +169,8 @@ func cmdSweep(args []string) {
 				sim.ParallelDo(len(cells), func(i int) {
 					c := &cells[i]
 					ball := clockPos(c.clock, c.lengthFt*0.3048)
-					// Common random numbers: seed depends on everything BUT
-					// rollout, so E-vs-rollout curves are smooth.
-					cellSeed := *seed<<32 ^ uint64(c.stimp*100)<<20 ^ uint64(c.slopePct)<<16 ^
-						uint64(c.clock)<<8 ^ uint64(c.lengthFt)
-					c.res = sim.EvalCell(env, ball, sk, c.rolloutM, field, *trials, cellSeed)
+					c.res = sim.EvalCell(env, ball, sk, c.rolloutM, field, *trials,
+						cellSeedFor(*seed, c.stimp, c.slopePct, c.clock, c.lengthFt))
 				})
 				crn := map[[2]float64][]*sweepRow{}
 				for i := range cells {

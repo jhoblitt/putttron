@@ -12,6 +12,13 @@ type Surface interface {
 	DecelCoeff(x, y, dirX, dirY float64) float64
 }
 
+// Bounded is an optional Surface extension for surfaces with a finite valid
+// region (heightmaps): OnGreen reports whether a point is on the green.
+// Surfaces that do not implement it (Planar) are unbounded.
+type Bounded interface {
+	OnGreen(x, y float64) bool
+}
+
 // Planar is a uniformly tilted plane with uniform friction. The fall line is
 // along +X: elevation decreases as x increases, so +X is downhill and a ball
 // at negative x is above the hole. Slope is expressed as % grade (rise/run ×

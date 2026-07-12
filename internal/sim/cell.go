@@ -18,15 +18,30 @@ type CellResult struct {
 	EStrokesSE float64
 
 	// Miss geometry, measured along the error-free direction of travel at
-	// the hole ("past" is beyond the hole on that axis).
+	// the hole ("past" is beyond the hole on that axis). Trials that left
+	// the green are excluded — these describe putt leaves.
 	MeanPastMiss float64 // mean past-hole distance among misses that finished past, m
 	PctMissShort float64 // fraction of misses that finished short of the hole
 	MeanLeave    float64 // mean distance from hole among misses, m
+	OffGreen     float64 // fraction of trials that left the green
+
+	// Axis is the unit direction of error-free travel at the hole — the
+	// short/past axis the miss geometry is measured along.
+	Axis physics.Vec2
 
 	// Per-trial stroke counts, in trial order. Under common random numbers
 	// trial t is the same error draw across rollouts, so differencing two
-	// cells' Strokes gives the paired ΔE distribution.
+	// cells' Strokes gives the paired ΔE distribution. Nil when the cell was
+	// evaluated without a field.
 	Strokes []float64
+}
+
+// TrialOutcome is one trial's terminal state, in trial order.
+type TrialOutcome struct {
+	Rest     physics.Vec2 // rest position, or the exit point when OffGreen
+	Holed    bool
+	Runaway  bool
+	OffGreen bool
 }
 
 // EvalCell solves the aim for one putt under a target-rollout pace policy and
@@ -34,10 +49,25 @@ type CellResult struct {
 // expected-strokes field.
 func EvalCell(env *physics.Env, ball physics.Vec2, skill player.Skill,
 	rollout float64, field *Field, n int, seed uint64) CellResult {
+	res, _ := evalCell(env, ball, skill, rollout, field, n, seed, false)
+	return res
+}
+
+// EvalCellRecord is EvalCell plus the per-trial terminal states. field may be
+// nil: stroke scoring is skipped (EStrokes, EStrokesSE, ThreePlus zero,
+// Strokes nil) but the trial sequence is identical — all randomness is
+// consumed by skill.Perturb, which never touches the field.
+func EvalCellRecord(env *physics.Env, ball physics.Vec2, skill player.Skill,
+	rollout float64, field *Field, n int, seed uint64) (CellResult, []TrialOutcome) {
+	return evalCell(env, ball, skill, rollout, field, n, seed, true)
+}
+
+func evalCell(env *physics.Env, ball physics.Vec2, skill player.Skill,
+	rollout float64, field *Field, n int, seed uint64, record bool) (CellResult, []TrialOutcome) {
 
 	aim, ok := player.Solve(env, ball, rollout)
 	if !ok {
-		return CellResult{}
+		return CellResult{}, nil
 	}
 
 	// Error-free reference roll: direction of travel at the hole defines the
@@ -54,13 +84,20 @@ func EvalCell(env *physics.Env, ball physics.Vec2, skill player.Skill,
 	rng := rand.New(rand.NewPCG(seed, 0xce11))
 
 	var (
-		makes             int
-		perTrial          = make([]float64, 0, n)
+		makes, nOff       int
+		perTrial          []float64
+		outcomes          []TrialOutcome
 		sumStrokes, sumSq float64
 		sumMissNext       float64 // Σ (1 − P(make next)) over misses
 		nPast, nShort     int
 		sumPast, sumLeave float64
 	)
+	if field != nil {
+		perTrial = make([]float64, 0, n)
+	}
+	if record {
+		outcomes = make([]TrialOutcome, 0, n)
+	}
 	for t := 0; t < n; t++ {
 		dir, speed := skill.Perturb(aim, dist, rng)
 		vel := physics.Vec2{X: math.Cos(dir), Y: math.Sin(dir)}.Scale(speed)
@@ -73,9 +110,17 @@ func EvalCell(env *physics.Env, ball physics.Vec2, skill player.Skill,
 			strokes = 1
 		case out.Runaway:
 			strokes = 4
+		case out.OffGreen:
+			nOff++
+			if field != nil {
+				strokes = 1 + field.EStrokes(out.Rest, env.HolePos) + field.OffPenalty
+				sumMissNext++ // a recovery from off the green is never a 2-putt save
+			}
 		default:
-			strokes = 1 + field.EStrokes(out.Rest, env.HolePos)
-			sumMissNext += 1 - field.PMake(out.Rest, env.HolePos)
+			if field != nil {
+				strokes = 1 + field.EStrokes(out.Rest, env.HolePos)
+				sumMissNext += 1 - field.PMake(out.Rest, env.HolePos)
+			}
 			dp := out.Rest.Sub(env.HolePos).Dot(axis)
 			if dp > 0 {
 				nPast++
@@ -85,28 +130,39 @@ func EvalCell(env *physics.Env, ball physics.Vec2, skill player.Skill,
 			}
 			sumLeave += out.Rest.Sub(env.HolePos).Norm()
 		}
-		sumStrokes += strokes
-		sumSq += strokes * strokes
-		perTrial = append(perTrial, strokes)
+		if field != nil {
+			sumStrokes += strokes
+			sumSq += strokes * strokes
+			perTrial = append(perTrial, strokes)
+		}
+		if record {
+			outcomes = append(outcomes, TrialOutcome{
+				Rest: out.Rest, Holed: out.Holed, Runaway: out.Runaway, OffGreen: out.OffGreen,
+			})
+		}
 	}
 
 	nf := float64(n)
 	res := CellResult{
-		SolveOK:   true,
-		Strokes:   perTrial,
-		Make:      float64(makes) / nf,
-		ThreePlus: sumMissNext / nf,
-		EStrokes:  sumStrokes / nf,
+		SolveOK:  true,
+		Strokes:  perTrial,
+		Axis:     axis,
+		Make:     float64(makes) / nf,
+		OffGreen: float64(nOff) / nf,
 	}
 	res.MakeSE = math.Sqrt(res.Make * (1 - res.Make) / nf)
-	varS := sumSq/nf - res.EStrokes*res.EStrokes
-	res.EStrokesSE = math.Sqrt(math.Max(varS, 0) / nf)
-	if miss := n - makes; miss > 0 {
+	if field != nil {
+		res.ThreePlus = sumMissNext / nf
+		res.EStrokes = sumStrokes / nf
+		varS := sumSq/nf - res.EStrokes*res.EStrokes
+		res.EStrokesSE = math.Sqrt(math.Max(varS, 0) / nf)
+	}
+	if miss := nPast + nShort; miss > 0 {
 		res.PctMissShort = float64(nShort) / float64(miss)
 		res.MeanLeave = sumLeave / float64(miss)
 	}
 	if nPast > 0 {
 		res.MeanPastMiss = sumPast / float64(nPast)
 	}
-	return res
+	return res, outcomes
 }

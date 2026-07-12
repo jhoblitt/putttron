@@ -117,6 +117,128 @@ func TestRestOnSlope(t *testing.T) {
 	}
 }
 
+// planeHeightmap samples the same tilted plane Planar defines (+X downhill)
+// onto a grid big enough for multi-meter rolls.
+func planeHeightmap(t *testing.T, slopePct, decel float64) *green.Heightmap {
+	t.Helper()
+	const rows, cols, dx = 88, 88, 0.25
+	x0, y0 := -11.0, 11.0
+	z := make([]float64, rows*cols)
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
+			x := x0 + float64(j)*dx
+			z[i*cols+j] = -slopePct / 100 * x
+		}
+	}
+	h, err := green.NewHeightmap(z, rows, cols, x0, y0, dx, decel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return h
+}
+
+// A heightmap sampled from a plane must roll identically to Planar — the
+// end-to-end check on interpolation + gradient + integration.
+func TestHeightmapPlanarRollEquivalence(t *testing.T) {
+	const slopePct, stimp = 3.0, 10.0
+	ad := DecelFromStimp(stimp)
+	planar := NewEnv(green.NewPlanar(slopePct, ad), 1.63)
+	planar.HolePos = Vec2{X: 100}
+	hm := NewEnv(planeHeightmap(t, slopePct, ad), 1.63)
+	hm.HolePos = Vec2{X: 100}
+
+	for _, tc := range []struct {
+		name string
+		vel  Vec2
+	}{
+		{"uphill", Vec2{X: -2.0}},
+		{"downhill", Vec2{X: 1.5}},
+		{"sidehill", Vec2{Y: 2.0}},
+	} {
+		a := planar.Roll(Vec2{}, tc.vel, false)
+		b := hm.Roll(Vec2{}, tc.vel, false)
+		if a.Runaway != b.Runaway {
+			t.Fatalf("%s: runaway mismatch", tc.name)
+		}
+		if d := a.Rest.Sub(b.Rest).Norm(); d > 0.001 {
+			t.Errorf("%s: rest differs by %.4f m (planar %+v, heightmap %+v)",
+				tc.name, d, a.Rest, b.Rest)
+		}
+	}
+}
+
+func BenchmarkHeightmapRoll(b *testing.B) {
+	const rows, cols, dx = 88, 88, 0.25
+	x0, y0 := -11.0, 11.0
+	z := make([]float64, rows*cols)
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
+			z[i*cols+j] = -0.02 * (x0 + float64(j)*dx)
+		}
+	}
+	h, err := green.NewHeightmap(z, rows, cols, x0, y0, dx, DecelFromStimp(10))
+	if err != nil {
+		b.Fatal(err)
+	}
+	env := NewEnv(h, 1.63)
+	env.HolePos = Vec2{X: 100}
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		env.Roll(Vec2{}, Vec2{X: 2.0}, false)
+	}
+}
+
+// boundedFlatHeightmap is a flat green valid only for x <= edgeX.
+func boundedFlatHeightmap(t *testing.T, edgeX, decel float64) *green.Heightmap {
+	t.Helper()
+	const rows, cols, dx = 60, 60, 0.25
+	x0, y0 := -7.0, 7.0
+	z := make([]float64, rows*cols)
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
+			if x0+float64(j)*dx > edgeX {
+				z[i*cols+j] = math.NaN()
+			}
+		}
+	}
+	h, err := green.NewHeightmap(z, rows, cols, x0, y0, dx, decel)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return h
+}
+
+// A ball rolling over the mask boundary ends the putt at the exit point.
+func TestRollOffGreenExit(t *testing.T) {
+	const edgeX = 1.0
+	e := NewEnv(boundedFlatHeightmap(t, edgeX, DecelFromStimp(10)), 1.63)
+	e.HolePos = Vec2{X: 100}
+
+	out := e.Roll(Vec2{}, Vec2{X: 2.0}, false)
+	if !out.OffGreen || out.Holed || out.Runaway {
+		t.Fatalf("fast ball should exit the green: %+v", out)
+	}
+	// OnGreen's bilinear-mask boundary sits half a cell past the last valid
+	// node column; the exit sample lands within a step of it.
+	if out.Rest.X < edgeX || out.Rest.X > edgeX+0.13 {
+		t.Errorf("exit point x = %.4f, want just past %.2f", out.Rest.X, edgeX)
+	}
+	if math.Abs(out.Rest.Y) > 1e-9 {
+		t.Errorf("straight roll drifted: y = %g", out.Rest.Y)
+	}
+
+	slow := e.Roll(Vec2{}, Vec2{X: 0.5}, false)
+	if slow.OffGreen || slow.Runaway {
+		t.Errorf("gentle ball should stop on the green: %+v", slow)
+	}
+
+	start := Vec2{X: edgeX + 1}
+	off := e.Roll(start, Vec2{X: 1}, false)
+	if !off.OffGreen || off.Rest != start || off.PathLen != 0 {
+		t.Errorf("ball starting off-green should exit immediately: %+v", off)
+	}
+}
+
 // A cross-slope putt must break toward the downhill (+X) side.
 func TestSidehillBreak(t *testing.T) {
 	e := NewEnv(green.NewPlanar(3.5, DecelFromStimp(10)), 1.63)

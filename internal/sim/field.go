@@ -22,6 +22,11 @@ type Field struct {
 	Psis []float64
 	E    [][]float64 // [ri][pi]
 	P    [][]float64
+
+	// OffPenalty is the extra expected strokes charged when a ball leaves
+	// the green (bounded surfaces only): the cost of the fringe/rough
+	// recovery over putting from the exit point. See docs/physics.md.
+	OffPenalty float64
 }
 
 var defaultRs = []float64{0.10, 0.20, 0.30, 0.45, 0.60, 0.80, 1.00, 1.30, 1.70, 2.20, 2.80, 3.50, 4.50, 6.00}
@@ -92,17 +97,18 @@ type FieldOpts struct {
 	Trials     int     // per node per sweep
 	Sweeps     int
 	Seed       uint64
+	OffPenalty float64 // extra strokes for leaving the green
 }
 
 func DefaultFieldOpts() FieldOpts {
-	return FieldOpts{LagRollout: 0.25, Trials: 1200, Sweeps: 5, Seed: 1}
+	return FieldOpts{LagRollout: 0.25, Trials: 1200, Sweeps: 5, Seed: 1, OffPenalty: 0.5}
 }
 
 // BuildField runs value iteration: E(node) = mean over trials of
 // 1 + (holed ? 0 : E(rest)), with every putt played under the same skill and
 // lag pace policy. Converges in a few sweeps since P(make) > 0 everywhere.
 func BuildField(env *physics.Env, skill player.Skill, o FieldOpts) *Field {
-	f := &Field{Rs: defaultRs, Psis: make([]float64, nPsi)}
+	f := &Field{Rs: defaultRs, Psis: make([]float64, nPsi), OffPenalty: o.OffPenalty}
 	for i := range f.Psis {
 		f.Psis[i] = 2 * math.Pi / float64(nPsi) * float64(i)
 	}
@@ -163,6 +169,8 @@ func BuildField(env *physics.Env, skill player.Skill, o FieldOpts) *Field {
 					makes++
 				case out.Runaway:
 					sumE += 1 + 3 // shouldn't happen on Phase-1 configs; pessimistic
+				case out.OffGreen:
+					sumE += 1 + f.EStrokes(out.Rest, env.HolePos) + f.OffPenalty
 				default:
 					sumE += 1 + f.EStrokes(out.Rest, env.HolePos)
 				}
