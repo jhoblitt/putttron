@@ -291,33 +291,39 @@ function ringPath(d,flat){
   return pts.join(" ");
 }
 
-function arrow(x1,y1,x2,y2,color,w){
-  const a=Math.atan2(y2-y1,x2-x1), h=7;
-  const p=(t,s)=>`${(x2-h*Math.cos(a)+s*h*0.45*Math.sin(a)).toFixed(1)},${(y2-h*Math.sin(a)-s*h*0.45*Math.cos(a)).toFixed(1)}`;
+function arrow(x1,y1,x2,y2,color,w,E){
+  const a=Math.atan2(y2-y1,x2-x1), h=E/28;
+  const p=(s)=>`${(x2-h*Math.cos(a)+s*h*0.42*Math.sin(a)).toFixed(1)},${(y2-h*Math.sin(a)-s*h*0.42*Math.cos(a)).toFixed(1)}`;
   return `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"
-    stroke="${color}" stroke-width="${w}" stroke-linecap="round"/>
-    <polygon points="${x2.toFixed(1)},${y2.toFixed(1)} ${p(0,1)} ${p(0,-1)}" fill="${color}"/>`;
+    stroke="${color}" stroke-width="${w.toFixed(2)}" stroke-linecap="round"/>
+    <polygon points="${x2.toFixed(1)},${y2.toFixed(1)} ${p(1)} ${p(-1)}" fill="${color}"/>`;
 }
 
 function svgFor(d,cell,ft,slope){
   const E=extentCm(d), dot=Math.max(1.1,Math.min(2.6,E/110));
+  // Everything below is in centimeters of green, so type and line weights are
+  // scaled off the extent — otherwise a wide cell renders unreadably small
+  // labels and a tight one renders huge ones.
+  const fs=E/42, lw=E/260;
   let s=`<svg class="disp" viewBox="${-E} ${-E} ${2*E} ${2*E}" role="img"
     aria-label="Rest positions of the missed putts, hole at center, ball arriving from the bottom">`;
 
-  for(let r=FOOT_CM;r<=E-2;r+=FOOT_CM){
-    s+=`<circle cx="0" cy="0" r="${r.toFixed(1)}" fill="none" stroke="var(--rule)" stroke-width="0.7"/>`;
-    s+=`<text x="3" y="${(-r+7).toFixed(1)}" fill="var(--ink-3)" font-size="7"
-      font-family="ui-monospace,monospace">${Math.round(r/FOOT_CM)}′</text>`;
+  // Keep the range rings to a handful whatever the spread.
+  const stepFt=Math.max(1,Math.ceil(E/FOOT_CM/5));
+  for(let r=stepFt*FOOT_CM;r<=E-2;r+=stepFt*FOOT_CM){
+    s+=`<circle cx="0" cy="0" r="${r.toFixed(1)}" fill="none" stroke="var(--rule)"
+      stroke-width="${lw.toFixed(2)}"/>`;
+    const lx=r*0.707, ly=-r*0.707;
+    s+=`<text x="${(lx+fs*0.3).toFixed(1)}" y="${(ly-fs*0.3).toFixed(1)}" fill="var(--ink-3)"
+      font-size="${fs.toFixed(1)}" font-family="ui-monospace,monospace">${Math.round(r/FOOT_CM)}′</text>`;
   }
 
-  if(show[95]||show[80]||show[50]){
-    for(const lvl of (d.hdr||[])){
-      if(!show[lvl.p]) continue;
-      const [col,dash]=HDR_STYLE[lvl.p];
-      for(const ring of lvl.rings)
-        s+=`<polygon points="${ringPath(d,ring)}" fill="none" stroke="var(${col})"
-          stroke-width="1.6" stroke-dasharray="${dash}"/>`;
-    }
+  for(const lvl of (d.hdr||[])){
+    if(!show[lvl.p]) continue;
+    const [col,dash]=HDR_STYLE[lvl.p];
+    for(const ring of lvl.rings)
+      s+=`<polygon points="${ringPath(d,ring)}" fill="none" stroke="var(${col})"
+        stroke-width="${(lw*2.4).toFixed(2)}" stroke-dasharray="${(lw*7).toFixed(1)} ${(lw*4).toFixed(1)}"/>`;
   }
 
   for(let i=0;i<d.pts.length;i+=2){
@@ -328,21 +334,22 @@ function svgFor(d,cell,ft,slope){
 
   if(show.hull&&d.hull.length>=6)
     s+=`<polygon points="${ringPath(d,d.hull)}" fill="none" stroke="var(--ink-2)"
-      stroke-width="1.2" stroke-dasharray="7 4"/>`;
+      stroke-width="${(lw*1.8).toFixed(2)}" stroke-dasharray="${(lw*9).toFixed(1)} ${(lw*5).toFixed(1)}"/>`;
 
-  s+=`<circle cx="0" cy="0" r="${HOLE_CM}" fill="var(--card)" stroke="var(--ink)" stroke-width="1.6"/>`;
+  s+=`<circle cx="0" cy="0" r="${HOLE_CM}" fill="var(--card)" stroke="var(--ink)"
+    stroke-width="${(lw*2.2).toFixed(2)}"/>`;
 
   // The ball starts far off-map (10-20 ft), so mark the direction it came from.
-  s+=arrow(0,E*0.94,0,E*0.72,"var(--ink-3)",1.4);
-  s+=`<text x="6" y="${(E*0.88).toFixed(1)}" fill="var(--ink-3)" font-size="8"
-    font-family="ui-monospace,monospace">ball, ${ft} ft back</text>`;
+  s+=arrow(0,E*0.95,0,E*0.76,"var(--ink-3)",lw*2,E);
+  s+=`<text x="${(fs*0.6).toFixed(1)}" y="${(E*0.9).toFixed(1)}" fill="var(--ink-3)"
+    font-size="${fs.toFixed(1)}" font-family="ui-monospace,monospace">ball, ${ft} ft back</text>`;
 
   if(slope!==0){
     // Downhill is +X in the green frame; show where that points in this view.
-    const [fx,fy]=view(d,1,0), L=E*0.17, ax=-E*0.78, ay=-E*0.80;
-    s+=arrow(ax,ay,ax+L*fx,ay-L*fy,"var(--ink-3)",1.4);
-    s+=`<text x="${(ax-4).toFixed(1)}" y="${(ay-8).toFixed(1)}" fill="var(--ink-3)" font-size="8"
-      font-family="ui-monospace,monospace">downhill</text>`;
+    const [fx,fy]=view(d,1,0), L=E*0.15, ax=-E*0.76, ay=-E*0.78;
+    s+=arrow(ax,ay,ax+L*fx,ay-L*fy,"var(--ink-3)",lw*2,E);
+    s+=`<text x="${(ax-fs*0.4).toFixed(1)}" y="${(ay-fs*0.7).toFixed(1)}" fill="var(--ink-3)"
+      font-size="${fs.toFixed(1)}" font-family="ui-monospace,monospace">downhill</text>`;
   }
   return s+`</svg>`;
 }
