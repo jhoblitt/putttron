@@ -18,6 +18,8 @@ func main() {
 		cmdFit(os.Args[2:])
 	case "sweep":
 		cmdSweep(os.Args[2:])
+	case "dispersion":
+		cmdDispersion(os.Args[2:])
 	case "report":
 		cmdReport(os.Args[2:])
 	default:
@@ -32,6 +34,7 @@ commands:
   calibrate   flat-green make-%% by distance per skill (calibration gate)
   fit         fit effective direction-sigma model to published make-%% tables
   sweep       full parameter-matrix sweep for optimal rollout
+  dispersion  record where the misses finish at each cell's optimal pace
   report      summarize a sweep CSV into results/optimal-rollout.md
 `)
 	os.Exit(2)

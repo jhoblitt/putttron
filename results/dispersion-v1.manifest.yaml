@@ -1,0 +1,16 @@
+generated: 2026-07-12T12:35:14-07:00
+git: e0daf1a
+source_sweep: results/sweep-planar-v3.csv
+seed: 1
+trials_per_cell: 8000
+stimp: 10
+cells: 240
+stored_points_cap: 1500
+notes:
+  rollout: per-group grid argmin from the source sweep; the cell seed is the
+    sweep's own (common random numbers), so these are the sweep's exact trials
+  points: rest positions of MISSED putts only, hole at the origin, meters,
+    green frame (+X downhill); holed and runaway trials appear only as counts
+  sampling: uniform stride down to stored_points_cap, with every convex-hull
+    vertex of the FULL miss set retained, so the hull area is exact
+  axis: unit direction of error-free travel at the hole (the past/short axis)

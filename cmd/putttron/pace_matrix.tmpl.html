@@ -77,6 +77,40 @@ td.blank{background:transparent;color:var(--ink-3);cursor:auto}
 .foot{margin-top:26px;padding-top:14px;border-top:1px solid var(--rule-2);
   color:var(--ink-3);font-size:12.5px;max-width:74ch}
 .foot code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+
+td.hasmap{cursor:pointer}
+td.hasmap:hover{box-shadow:inset 0 0 0 2px var(--ink)}
+#scrim{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:20;display:none}
+#modal{position:fixed;inset:0;z-index:21;padding:18px;display:none;place-items:center}
+#scrim.on{display:block}
+#modal.on{display:grid}
+.panel{background:var(--card);border:1px solid var(--rule-2);border-radius:10px;
+  width:100%;max-width:880px;max-height:92vh;overflow:auto;padding:18px 22px 16px;
+  box-shadow:0 18px 50px rgba(0,0,0,.35)}
+.panel-head{display:flex;justify-content:space-between;align-items:baseline;gap:16px;
+  border-bottom:1px solid var(--rule);padding-bottom:10px;margin-bottom:14px}
+.panel-head h2{font-family:"Iowan Old Style",Palatino,"Palatino Linotype",Georgia,serif;
+  font-size:19px;font-weight:600;margin:0}
+.panel-close{background:none;border:1px solid var(--rule-2);color:var(--ink-2);border-radius:6px;
+  padding:5px 11px;cursor:pointer;font:12px/1 ui-monospace,SFMono-Regular,Menlo,monospace}
+.panel-close:hover,.panel-close:focus-visible{color:var(--ink);border-color:var(--ink-3)}
+.panel-body{display:grid;grid-template-columns:minmax(0,1fr) 232px;gap:22px;align-items:start}
+@media(max-width:760px){.panel-body{grid-template-columns:1fr}}
+svg.disp{width:100%;height:auto;display:block;background:var(--paper);
+  border:1px solid var(--rule);border-radius:8px}
+.stats{font:12.5px/1.55 ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink-2)}
+.stats b{color:var(--ink);font-weight:700}
+.stats .row{margin-bottom:9px}
+.stats .hero{font-size:15px;color:var(--ink)}
+.toggles{margin-top:14px;border-top:1px solid var(--rule);padding-top:11px}
+.toggles h3{margin:0 0 7px;font:600 10.5px/1 ui-monospace,SFMono-Regular,Menlo,monospace;
+  letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3)}
+.toggles label{display:flex;align-items:center;gap:8px;margin-bottom:6px;cursor:pointer}
+.toggles label.disabled{opacity:.45;cursor:not-allowed}
+.toggles input{margin:0;accent-color:var(--r4)}
+.key{width:16px;border-top:2px solid;display:inline-block;flex:none}
+.panel-foot{margin-top:14px;padding-top:10px;border-top:1px solid var(--rule);
+  color:var(--ink-3);font-size:12px;line-height:1.5}
 </style>
 
 <div class="wrap">
@@ -86,7 +120,8 @@ td.blank{background:transparent;color:var(--ink-3);cursor:auto}
   <p class="lede">Each cell is the <strong>target rollout</strong> — how far past the hole the
   perfectly-struck putt should finish — that minimizes expected putts to hole out.
   <strong>die</strong> means aim to have the ball die at the front edge. Small figures are
-  first-putt make% and 3-putt% at that target. Hover or focus a cell for the full detail.</p>
+  first-putt make% and 3-putt% at that target. Hover or focus a cell for the full detail —
+  <strong>click it</strong> for a map of where that cell's missed putts finished.</p>
   <ul class="meta">
     <li>green speed: Stimp {{.Stimp}} (8–12 barely moves the optimum)</li>
     <li>12 o'clock = ball above hole, putting downhill · 6 = uphill · 3 = sidehill (9 mirrors it)</li>
@@ -108,14 +143,36 @@ error models calibrated to Bansal &amp; Broadie ShotLink data and published make
 Two modeling caveats: optima are conditional on a fixed follow-up lag policy
 (0.25&nbsp;m, sensitivity-checked in the findings), and direction error is calibrated on
 flat greens — steep-slope cells assume read error does not grow with break.
+Clicking a cell opens the dispersion map for that putt: every dot is where one simulated
+miss came to rest, re-simulated from the sweep's own random numbers, so the map's holed
+count is the same trial set behind the make% on the cell.
 Source: {{.SourceNote}} — full tables in
 <code>results/optimal-rollout.md</code>, narrative in <code>results/findings-phase1.md</code>
 (github.com/jhoblitt/putttron).</p>
 </div>
 <div id="tip" role="status"></div>
 
+<div id="scrim"></div>
+<div id="modal" role="dialog" aria-modal="true" aria-labelledby="panel-title">
+  <div class="panel">
+    <div class="panel-head">
+      <h2 id="panel-title"></h2>
+      <button class="panel-close" type="button">close ✕</button>
+    </div>
+    <div class="panel-body">
+      <div id="panel-map"></div>
+      <div>
+        <div class="stats" id="panel-stats"></div>
+        <div class="toggles" id="panel-toggles"></div>
+      </div>
+    </div>
+    <p class="panel-foot" id="panel-foot"></p>
+  </div>
+</div>
+
 <script>
 const DATA={{.DataJSON}};
+const DISP={{.DispJSON}};
 const SKILLS={{.SkillsJSON}};
 const LENGTHS={{.LengthsJSON}};
 const SLOPES={{.SlopesJSON}};
@@ -147,10 +204,15 @@ for(const [sk,desc] of SKILLS){
       tr.innerHTML=`<th scope="row">${label}</th>`;
       for(const [clk] of CLOCKS){
         const td=document.createElement("td");
-        const c=DATA[`${sk}|${ft}|${s}|${clk}`];
+        const key=`${sk}|${ft}|${s}|${clk}`;
+        const c=DATA[key];
         if(!c){ td.className="blank"; td.textContent="·"; tr.appendChild(td); continue; }
         const cls=stepFor(c.ro);
-        td.className=cls; td.tabIndex=0;
+        const hasMap=!!DISP[key];
+        td.className=hasMap?cls+" hasmap":cls;
+        td.tabIndex=0;
+        td.dataset.key=key;
+        if(hasMap) td.setAttribute("aria-haspopup","dialog");
         td.style.background=`var(--${cls})`;
         const roIn=c.ro*M2IN;
         const big=roIn<0.5?"die":`${Math.round(roIn)} in`;
@@ -160,8 +222,9 @@ for(const [sk,desc] of SKILLS){
           `<b>${sk} · ${ft} ft · ${s===0?"flat":label+" slope"}${s===0?"":" · "+ (clk===12?"downhill":clk===6?"uphill":"sidehill")}</b>`,
           `target: ${roIn<0.5?"die at the hole":Math.round(roIn)+" in past"} (plateau ${Math.round(c.plo*M2IN)}–${Math.round(c.phi*M2IN)} in)`,
           `make ${c.make.toFixed(1)}% · 3-putt ${c.tp.toFixed(1)}% · E[putts] ${c.E.toFixed(3)}`,
-          `misses that go long finish ~${Math.round(c.past*M2IN)} in past · ${c.short}% of misses short`
-        ].join("<br>");
+          `misses that go long finish ~${Math.round(c.past*M2IN)} in past · ${c.short}% of misses short`,
+          hasMap?`<i>click for the dispersion map</i>`:``
+        ].filter(Boolean).join("<br>");
         tr.appendChild(td);
       }
       body.appendChild(tr);
@@ -189,4 +252,187 @@ new MutationObserver(()=>{document.querySelectorAll("td[data-tip]").forEach(td=>
   const cls=[...td.classList].find(c=>c.startsWith("r"));
   td.style.color=deepInk(cls)?"var(--ink-on-deep)":"";
 });}).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
+
+/* ---- dispersion map ---------------------------------------------------- */
+const CM2IN=0.393701, M2FT2=10.7639, FOOT_CM=30.48, HOLE_CM=5.4;
+const HDR_STYLE={50:["--r5","5 3"],80:["--r4","3 3"],95:["--r3","1 3"]};
+const scrim=document.getElementById("scrim"), modal=document.getElementById("modal");
+const panelTitle=document.getElementById("panel-title");
+const panelMap=document.getElementById("panel-map");
+const panelStats=document.getElementById("panel-stats");
+const panelToggles=document.getElementById("panel-toggles");
+const panelFoot=document.getElementById("panel-foot");
+const closeBtn=modal.querySelector(".panel-close");
+// Overlay choices persist across cells so comparing two cells doesn't mean
+// re-ticking boxes.
+const show={hull:true,50:false,80:false,95:true};
+let opener=null, current=null;
+
+// The map is drawn in the golfer's frame: rotate the green frame so the
+// error-free ball path arrives from the bottom. Then "long" is up and "short"
+// is down in every cell, matching the past/short figures beside it.
+const view=(d,x,y)=>[x*d.ay-y*d.ax, x*d.ax+y*d.ay];
+
+function extentCm(d){
+  let m=2*FOOT_CM;
+  for(const arr of [d.pts,d.hull]) for(let i=0;i<arr.length;i+=2){
+    const [vx,vy]=view(d,arr[i],arr[i+1]);
+    m=Math.max(m,Math.abs(vx)+10,Math.abs(vy)+10);
+  }
+  return Math.ceil(m/FOOT_CM)*FOOT_CM;
+}
+
+function ringPath(d,flat){
+  const pts=[];
+  for(let i=0;i<flat.length;i+=2){
+    const [vx,vy]=view(d,flat[i],flat[i+1]);
+    pts.push(`${vx.toFixed(1)},${(-vy).toFixed(1)}`);
+  }
+  return pts.join(" ");
+}
+
+function arrow(x1,y1,x2,y2,color,w){
+  const a=Math.atan2(y2-y1,x2-x1), h=7;
+  const p=(t,s)=>`${(x2-h*Math.cos(a)+s*h*0.45*Math.sin(a)).toFixed(1)},${(y2-h*Math.sin(a)-s*h*0.45*Math.cos(a)).toFixed(1)}`;
+  return `<line x1="${x1.toFixed(1)}" y1="${y1.toFixed(1)}" x2="${x2.toFixed(1)}" y2="${y2.toFixed(1)}"
+    stroke="${color}" stroke-width="${w}" stroke-linecap="round"/>
+    <polygon points="${x2.toFixed(1)},${y2.toFixed(1)} ${p(0,1)} ${p(0,-1)}" fill="${color}"/>`;
+}
+
+function svgFor(d,cell,ft,slope){
+  const E=extentCm(d), dot=Math.max(1.1,Math.min(2.6,E/110));
+  let s=`<svg class="disp" viewBox="${-E} ${-E} ${2*E} ${2*E}" role="img"
+    aria-label="Rest positions of the missed putts, hole at center, ball arriving from the bottom">`;
+
+  for(let r=FOOT_CM;r<=E-2;r+=FOOT_CM){
+    s+=`<circle cx="0" cy="0" r="${r.toFixed(1)}" fill="none" stroke="var(--rule)" stroke-width="0.7"/>`;
+    s+=`<text x="3" y="${(-r+7).toFixed(1)}" fill="var(--ink-3)" font-size="7"
+      font-family="ui-monospace,monospace">${Math.round(r/FOOT_CM)}′</text>`;
+  }
+
+  if(show[95]||show[80]||show[50]){
+    for(const lvl of (d.hdr||[])){
+      if(!show[lvl.p]) continue;
+      const [col,dash]=HDR_STYLE[lvl.p];
+      for(const ring of lvl.rings)
+        s+=`<polygon points="${ringPath(d,ring)}" fill="none" stroke="var(${col})"
+          stroke-width="1.6" stroke-dasharray="${dash}"/>`;
+    }
+  }
+
+  for(let i=0;i<d.pts.length;i+=2){
+    const [vx,vy]=view(d,d.pts[i],d.pts[i+1]);
+    s+=`<circle cx="${vx.toFixed(1)}" cy="${(-vy).toFixed(1)}" r="${dot.toFixed(2)}"
+      fill="var(--ink)" fill-opacity="0.42"/>`;
+  }
+
+  if(show.hull&&d.hull.length>=6)
+    s+=`<polygon points="${ringPath(d,d.hull)}" fill="none" stroke="var(--ink-2)"
+      stroke-width="1.2" stroke-dasharray="7 4"/>`;
+
+  s+=`<circle cx="0" cy="0" r="${HOLE_CM}" fill="var(--card)" stroke="var(--ink)" stroke-width="1.6"/>`;
+
+  // The ball starts far off-map (10-20 ft), so mark the direction it came from.
+  s+=arrow(0,E*0.94,0,E*0.72,"var(--ink-3)",1.4);
+  s+=`<text x="6" y="${(E*0.88).toFixed(1)}" fill="var(--ink-3)" font-size="8"
+    font-family="ui-monospace,monospace">ball, ${ft} ft back</text>`;
+
+  if(slope!==0){
+    // Downhill is +X in the green frame; show where that points in this view.
+    const [fx,fy]=view(d,1,0), L=E*0.17, ax=-E*0.78, ay=-E*0.80;
+    s+=arrow(ax,ay,ax+L*fx,ay-L*fy,"var(--ink-3)",1.4);
+    s+=`<text x="${(ax-4).toFixed(1)}" y="${(ay-8).toFixed(1)}" fill="var(--ink-3)" font-size="8"
+      font-family="ui-monospace,monospace">downhill</text>`;
+  }
+  return s+`</svg>`;
+}
+
+function openMap(td){
+  const key=td.dataset.key, d=DISP[key], cell=DATA[key];
+  if(!d||!cell) return;
+  const [sk,ft,slope,clk]=key.split("|");
+  current={d,cell,ft,slope:+slope,clk:+clk};
+  opener=td;
+
+  const dir=(+slope===0)?"flat":(+clk===12?"downhill":+clk===6?"uphill":"sidehill");
+  panelTitle.textContent=`${sk} · ${ft} ft · ${+slope===0?"flat":slope+"% "+dir}`;
+  renderPanel();
+  scrim.classList.add("on"); modal.classList.add("on");
+  closeBtn.focus();
+}
+
+function renderPanel(){
+  const {d,cell,ft,slope}=current;
+  panelMap.innerHTML=svgFor(d,cell,ft,slope);
+
+  const roIn=cell.ro*M2IN, gridIn=d.ro*M2IN;
+  const rows=[
+    `<div class="row hero"><b>${(100*d.holed/d.n).toFixed(1)}%</b> holed
+      <span style="color:var(--ink-3)">(${d.holed.toLocaleString()} of ${d.n.toLocaleString()})</span></div>`,
+    `<div class="row"><b>${d.miss.toLocaleString()}</b> misses mapped
+      <span style="color:var(--ink-3)">(showing ${(d.pts.length/2).toLocaleString()})</span></div>`,
+    `<div class="row">total spread (convex hull)<br><b>${(d.hullA*M2FT2).toFixed(1)} ft²</b>
+      <span style="color:var(--ink-3)">(${d.hullA.toFixed(2)} m²)</span></div>`,
+    `<div class="row">misses that run past finish<br><b>${Math.round(cell.past*M2IN)} in</b> past ·
+      <b>${cell.short}%</b> end up short</div>`,
+    `<div class="row" style="color:var(--ink-3)">simulated at the swept target
+      ${gridIn<0.5?"(die)":Math.round(gridIn)+" in"}; refined optimum ${roIn<0.5?"die":Math.round(roIn)+" in"}</div>`
+  ];
+  if(d.runaway>0) rows.push(`<div class="row"><b>${d.runaway}</b> never stopped (runaway)</div>`);
+  panelStats.innerHTML=rows.join("");
+
+  let t=`<h3>overlays</h3>`;
+  t+=`<label><input type="checkbox" data-t="hull" ${show.hull?"checked":""}>
+    <span class="key" style="border-color:var(--ink-2);border-top-style:dashed"></span>
+    convex hull</label>`;
+  for(const p of [50,80,95]){
+    const lvl=(d.hdr||[]).find(h=>h.p===p);
+    const [col]=HDR_STYLE[p];
+    if(!lvl){
+      t+=`<label class="disabled" title="too few misses to estimate a density">
+        <input type="checkbox" disabled> <span class="key" style="border-color:var(${col})"></span>
+        ${p}% — too few misses</label>`;
+      continue;
+    }
+    t+=`<label><input type="checkbox" data-t="${p}" ${show[p]?"checked":""}>
+      <span class="key" style="border-color:var(${col});border-top-style:dashed"></span>
+      ${p}% of misses · ${(lvl.a*M2FT2).toFixed(1)} ft²</label>`;
+  }
+  panelToggles.innerHTML=t;
+  panelFoot.innerHTML=`The view is rotated so the error-free ball path arrives from the
+    bottom — up is past the hole, down is short. Dots are where missed putts came to rest
+    (hole drawn to scale). The percentage contours are highest-density regions: the
+    smallest area holding that share of the misses.`;
+}
+
+panelToggles.addEventListener("change",e=>{
+  const k=e.target.dataset.t; if(!k) return;
+  show[k==="hull"?"hull":+k]=e.target.checked;
+  renderPanel();
+});
+
+function closeMap(){
+  modal.classList.remove("on"); scrim.classList.remove("on");
+  panelMap.innerHTML=""; current=null;
+  if(opener){ opener.focus(); opener=null; }
+}
+closeBtn.addEventListener("click",closeMap);
+scrim.addEventListener("click",closeMap);
+document.addEventListener("keydown",e=>{
+  if(!modal.classList.contains("on")) return;
+  if(e.key==="Escape"){ closeMap(); return; }
+  if(e.key==="Tab"){
+    // The panel's only tab stops are the close button and the overlay boxes.
+    const f=[...modal.querySelectorAll("button,input:not([disabled])")];
+    const i=f.indexOf(document.activeElement);
+    e.preventDefault();
+    f[(i+(e.shiftKey?-1:1)+f.length)%f.length].focus();
+  }
+});
+app.addEventListener("click",e=>{const t=e.target.closest("td.hasmap"); if(t) openMap(t);});
+app.addEventListener("keydown",e=>{
+  if(e.key!=="Enter"&&e.key!==" ") return;
+  const t=e.target.closest("td.hasmap");
+  if(t){ e.preventDefault(); openMap(t); }
+});
 </script>

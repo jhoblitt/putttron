@@ -44,6 +44,7 @@ func cmdReport(args []string) {
 	htmlOut := fs.String("html", "results/pace-matrix.html", "interactive pace-matrix page (empty to skip)")
 	breakoutOut := fs.String("breakout", "results/breakout-slope-clock.md", "slope-by-direction markdown tables (empty to skip)")
 	htmlStimp := fs.Float64("stimp", 10, "green speed shown in the pace-matrix and breakout views")
+	dispIn := fs.String("dispersion", "", "dispersion run base path (reads <base>.cells.csv and <base>.points.csv); empty to omit the per-cell maps")
 	fs.Parse(args)
 
 	var rows []rptRow
@@ -136,8 +137,23 @@ func cmdReport(args []string) {
 	}
 	fmt.Printf("wrote %s (%d groups)\n", *out, len(groups))
 
+	embeds := map[string]dispEmbed{}
+	if *dispIn != "" {
+		disp, err := readDispersion(*dispIn)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		if err := validateDispersion(disp, groups, *htmlStimp); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			os.Exit(1)
+		}
+		embeds = buildDispEmbeds(disp)
+		fmt.Printf("read %s (%d dispersion cells)\n", *dispIn, len(embeds))
+	}
+
 	if *htmlOut != "" {
-		if err := writePaceMatrix(*htmlOut, *htmlStimp, *in, keys, groups); err != nil {
+		if err := writePaceMatrix(*htmlOut, *htmlStimp, *in, keys, groups, embeds); err != nil {
 			fmt.Fprintln(os.Stderr, err)
 			os.Exit(1)
 		}
@@ -253,7 +269,8 @@ var skillDesc = map[string]string{
 
 // writePaceMatrix renders the self-contained interactive heatmap page for
 // one green speed from the grouped sweep rows.
-func writePaceMatrix(path string, stimp float64, inputs string, keys []groupKey, groups map[groupKey][]rptRow) error {
+func writePaceMatrix(path string, stimp float64, inputs string, keys []groupKey,
+	groups map[groupKey][]rptRow, embeds map[string]dispEmbed) error {
 	type cell struct {
 		Ro    float64 `json:"ro"`
 		Plo   float64 `json:"plo"`
@@ -273,7 +290,7 @@ func writePaceMatrix(path string, stimp float64, inputs string, keys []groupKey,
 		sort.Slice(g, func(i, j int) bool { return g[i].rollout < g[j].rollout })
 		best, roStar, lo, hi := argminSE(g)
 		r := g[best]
-		key := fmt.Sprintf("%s|%.0f|%.0f|%d", k.skill, k.lengthFt, k.slope, k.clock)
+		key := cellKeyString(k)
 		data[key] = cell{
 			Ro: math.Round(1000*roStar) / 1000, Plo: lo, Phi: hi,
 			Make: math.Round(1000*r.make_) / 10, Tp: math.Round(1000*r.threePlus) / 10,
@@ -316,6 +333,7 @@ func writePaceMatrix(path string, stimp float64, inputs string, keys []groupKey,
 		"SkillsJSON":  mustJSON(skillPairs),
 		"LengthsJSON": mustJSON(lengths),
 		"SlopesJSON":  mustJSON(slopes),
+		"DispJSON":    mustJSON(embeds),
 	})
 	if err != nil {
 		return err

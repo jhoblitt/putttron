@@ -122,7 +122,22 @@ which overstates the equivalence band under common random numbers.)
   direction (12/3/6 o'clock) per skill and length, Stimp 10.
 - `pace-matrix.html` — the same breakout as a self-contained interactive
   heatmap page, served at <https://jhoblitt.github.io/putttron/> (hover a
-  cell for plateau, E[putts], and miss geometry).
+  cell for plateau, E[putts], and miss geometry; **click** it for the
+  dispersion map).
+- **Dispersion maps** (`dispersion-v1.{cells,points}.csv`, embedded in the
+  page): where the misses actually finish at each cell's optimal pace.
+  Every cell is re-simulated from the sweep's own random numbers, so its
+  holed count is the same trial set behind the printed make%. The map shows
+  the miss rest positions, the convex hull of all of them (the total spread,
+  in ft²), and 50/80/95% highest-density contours. The view is rotated so the
+  error-free path arrives from the bottom — up is past the hole, down is
+  short — which is why the scatter reads the same way in every cell.
+
+  The spread is where skill and slope show up most starkly: tour's 10 ft 5%
+  downhill misses fit inside **4.5 ft²** (the fall line herds them onto one
+  axis), the same tour putt on the flat covers 8.0 ft², and hcp30's 20 ft 5%
+  sidehill misses sprawl over **169 ft²** — a ~38× range in the area a miss
+  can land in.
 
 Both are generated, together with `optimal-rollout.md`, by `putttron
 report` from the sweep CSV.
@@ -131,7 +146,8 @@ report` from the sweep CSV.
 
 ```
 go run ./cmd/putttron sweep -trials 8000 -fieldtrials 1500 -fieldsweeps 5 -seed 1 -tag sweep-planar-v3
-go run ./cmd/putttron report -in results/sweep-planar-v3.csv
+go run ./cmd/putttron dispersion -in results/sweep-planar-v3.csv -tag dispersion-v1
+go run ./cmd/putttron report -in results/sweep-planar-v3.csv -dispersion results/dispersion-v1
 ```
 
 Sensitivity runs (Stimp 10 slice):

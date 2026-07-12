@@ -29,9 +29,14 @@ too aggressive for weak ones at 15 ft and beyond.
 ## Usage
 
 ```
-go run ./cmd/putttron calibrate   # calibration gate vs published make-% tables
-go run ./cmd/putttron sweep       # run the parameter-matrix sweep
-go run ./cmd/putttron report -in results/sweep-planar-v3.csv
+go run ./cmd/putttron calibrate    # calibration gate vs published make-% tables
+go run ./cmd/putttron sweep        # run the parameter-matrix sweep
+go run ./cmd/putttron dispersion -in results/sweep-planar-v3.csv   # where the misses finish
+go run ./cmd/putttron report -in results/sweep-planar-v3.csv -dispersion results/dispersion-v1
 ```
+
+On the live page, **clicking any heatmap cell** opens the dispersion map for
+that putt: every simulated miss's resting place, the total spread (convex
+hull, in ft²), and 50/80/95% probability contours.
 
 Results land in `results/`.

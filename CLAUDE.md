@@ -46,11 +46,14 @@ putttron/
   docs/
     literature.md         # survey with citations; source of all human-error numbers
     physics.md            # derivations: equations of motion, capture model, stimp calibration
-  cmd/putttron/           # CLI: calibrate, fit, sweep, report (+ pace_matrix.tmpl.html)
+  cmd/putttron/           # CLI: calibrate, fit, sweep, dispersion, report (+ pace_matrix.tmpl.html)
   internal/green/         # green surfaces (analytic planes + heightmap greens)
   internal/physics/       # ball dynamics, integrator, hole capture
   internal/player/        # skill profiles, aim/pace solver, error sampling
   internal/sim/           # Monte Carlo engine, expected-strokes field, cell evaluation
+  internal/geom/          # hulls, polygon areas, KDE grids, HDR levels, marching squares
+  internal/npz/           # NumPy npz/npy reader (+ npztest fixture writer)
+  internal/course/        # greens-repo loader: index.json + heightmap.npz -> Heightmap
   results/                # committed run outputs (CSVs + manifests + reports + pace-matrix.html)
 ```
 
@@ -235,6 +238,16 @@ for `Gradient` — never finite-difference the raw grid at sub-cell scale.
   interactive heatmap page, rendered from
   `cmd/putttron/pace_matrix.tmpl.html`). Never hand-edit these outputs —
   change the generator and rerun.
+- **Dispersion maps.** `putttron dispersion` re-simulates each pace-matrix
+  cell at its optimal rollout using the *sweep's own cell seed* — common
+  random numbers make this the identical trial sequence — and records where
+  the misses came to rest (`dispersion-v1.{cells,points}.csv`). It hard-fails
+  if a reproduced make% disagrees with the sweep CSV, so the two can never
+  drift apart. `report -dispersion <base>` embeds per-cell geometry (convex
+  hull + area, 50/80/95% KDE highest-density contours, a thinned scatter) into
+  the page, where clicking a cell opens it. Points are downsampled to a cap
+  but the full set's hull vertices are always retained, so the reported spread
+  area does not depend on the cap.
 - `results/pace-matrix.html` is served at
   <https://jhoblitt.github.io/putttron/> by `.github/workflows/pages.yml`
   on every push to main. Workflow actions are SHA-pinned (pinact) and
