@@ -30,6 +30,7 @@ var hdrMasses = []float64{0.50, 0.80, 0.95}
 type dispData struct {
 	rollout                                       float64
 	nTrials, nHoled, nRunaway, nOff, nMiss, nKept int
+	ball                                          physics.Vec2
 	axis                                          physics.Vec2
 	pts                                           []geom.Pt
 }
@@ -41,7 +42,11 @@ type hdrLevel struct {
 }
 
 // dispEmbed is the per-cell payload injected into the page: centimeter ints
-// for geometry, meters for areas.
+// for geometry, meters for areas. Bx/By is the unit direction from the hole
+// back to the ball (the line the putt was struck along); Ax/Ay is the unit
+// direction the ball is actually travelling when it reaches the hole. On a
+// breaking putt those are not the same, which is the whole reason the map has
+// to say which is which.
 type dispEmbed struct {
 	Ro      float64    `json:"ro"`
 	N       int        `json:"n"`
@@ -49,6 +54,8 @@ type dispEmbed struct {
 	Runaway int        `json:"runaway"`
 	Miss    int        `json:"miss"`
 	Kept    int        `json:"kept"`
+	Bx      float64    `json:"bx"`
+	By      float64    `json:"by"`
 	Ax      float64    `json:"ax"`
 	Ay      float64    `json:"ay"`
 	Pts     []int16    `json:"pts"`
@@ -66,8 +73,8 @@ func readDispersion(base string) (map[groupKey]*dispData, error) {
 	}
 	out := map[groupKey]*dispData{}
 	for i, r := range cells {
-		if len(r) < 14 {
-			return nil, fmt.Errorf("%s.cells.csv:%d: want 14 columns, got %d", base, i+2, len(r))
+		if len(r) < 16 {
+			return nil, fmt.Errorf("%s.cells.csv:%d: want 16 columns, got %d", base, i+2, len(r))
 		}
 		k, err := dispKey(base+".cells.csv", i, r)
 		if err != nil {
@@ -79,14 +86,20 @@ func readDispersion(base string) (map[groupKey]*dispData, error) {
 			rollout: num(5),
 			nTrials: ints(6), nHoled: ints(7), nRunaway: ints(8),
 			nOff: ints(9), nMiss: ints(10), nKept: ints(11),
-			axis: physics.Vec2{X: num(12), Y: num(13)},
+			ball: physics.Vec2{X: num(12), Y: num(13)},
+			axis: physics.Vec2{X: num(14), Y: num(15)},
 		}
-		// The CSV rounds the axis to 4 decimals; renormalize so the view
-		// rotation it drives is an exact unit basis.
+		// The CSV rounds these to a few decimals; renormalize, since they
+		// drive a view rotation that has to be an exact unit basis.
 		if n := d.axis.Norm(); n > 1e-9 {
 			d.axis = d.axis.Scale(1 / n)
 		} else {
 			return nil, fmt.Errorf("%s.cells.csv:%d: degenerate travel axis", base, i+2)
+		}
+		if n := d.ball.Norm(); n > 1e-9 {
+			d.ball = d.ball.Scale(1 / n)
+		} else {
+			return nil, fmt.Errorf("%s.cells.csv:%d: ball is on top of the hole", base, i+2)
 		}
 		if d.nHoled+d.nRunaway+d.nOff+d.nMiss != d.nTrials {
 			return nil, fmt.Errorf("%s.cells.csv:%d: outcome counts (%d+%d+%d+%d) do not sum to %d trials",
@@ -213,7 +226,9 @@ func cellKeyString(k groupKey) string {
 func embedCell(d *dispData) dispEmbed {
 	e := dispEmbed{
 		Ro: d.rollout, N: d.nTrials, Holed: d.nHoled, Runaway: d.nRunaway,
-		Miss: d.nMiss, Kept: d.nKept, Ax: d.axis.X, Ay: d.axis.Y,
+		Miss: d.nMiss, Kept: d.nKept,
+		Bx: round4(d.ball.X), By: round4(d.ball.Y),
+		Ax: round4(d.axis.X), Ay: round4(d.axis.Y),
 	}
 	hullIdx := geom.ConvexHullIndices(d.pts)
 	hull := make([]geom.Pt, len(hullIdx))
@@ -273,3 +288,5 @@ func cm(v float64) int16 {
 	q := math.Round(v * 100)
 	return int16(math.Max(math.MinInt16, math.Min(math.MaxInt16, q)))
 }
+
+func round4(v float64) float64 { return math.Round(v*1e4) / 1e4 }

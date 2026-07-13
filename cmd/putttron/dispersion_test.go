@@ -134,6 +134,15 @@ func TestDispersionReportIntegration(t *testing.T) {
 		if math.Abs(math.Hypot(d.axis.X, d.axis.Y)-1) > 1e-6 {
 			t.Errorf("%+v: travel axis is not a unit vector: %+v", k, d.axis)
 		}
+		if math.Abs(math.Hypot(d.ball.X, d.ball.Y)-1) > 1e-6 {
+			t.Errorf("%+v: ball direction is not a unit vector: %+v", k, d.ball)
+		}
+		// The ball sits opposite the hole from the direction it is putted in:
+		// the two must not point the same way.
+		if d.ball.Dot(d.axis) > 0 {
+			t.Errorf("%+v: the ball direction (%+v) and the travel axis (%+v) agree — the map would put the ball on the wrong side",
+				k, d.ball, d.axis)
+		}
 	}
 
 	dir2 := t.TempDir()
@@ -200,6 +209,62 @@ func TestDispersionReportIntegration(t *testing.T) {
 	})
 	if !strings.Contains(readFile(t, plain), "const DISP={};") {
 		t.Error("a report without -dispersion did not emit an empty DISP")
+	}
+}
+
+// The map rotates the green so the line you putted along runs up the page. A
+// rotation preserves angles, so the fall line has to land in the same place
+// for every cell of a given clock position: dead sideways on a sidehill putt,
+// straight up (away from you) on a downhill one, straight back at you on an
+// uphill one. This is what stops the downhill arrow from looking arbitrary.
+func TestDispersionMapFallLineOrientation(t *testing.T) {
+	if testing.Short() {
+		t.Skip("end-to-end Monte Carlo")
+	}
+	dir := t.TempDir()
+	cmdSweep([]string{
+		"-trials", "300", "-fieldtrials", "40", "-fieldsweeps", "2", "-seed", "3",
+		"-stimps", "10", "-slopes", "1,5", "-skills", "tour", "-out", dir, "-tag", "s",
+	})
+	csvPath := filepath.Join(dir, "s.csv")
+	cmdDispersion([]string{
+		"-in", csvPath, "-out", dir, "-tag", "d", "-stimp", "10",
+		"-trials", "300", "-seed", "3", "-cap", "200",
+	})
+	htmlPath := filepath.Join(dir, "p.html")
+	cmdReport([]string{
+		"-in", csvPath, "-dispersion", filepath.Join(dir, "d"),
+		"-out", filepath.Join(dir, "o.md"), "-html", htmlPath,
+		"-breakout", filepath.Join(dir, "b.md"), "-stimp", "10",
+	})
+
+	// The view maps the green frame so that -ball (the putt line) points up.
+	viewOf := func(e dispEmbed, x, y float64) (float64, float64) {
+		ux, uy := -e.Bx, -e.By
+		return x*uy - y*ux, x*ux + y*uy
+	}
+	for key, e := range parseDispEmbeds(t, htmlPath) {
+		clock := key[strings.LastIndex(key, "|")+1:]
+		// Downhill is +X in the green frame.
+		dx, dy := viewOf(e, 1, 0)
+		// The ball must come out straight down the page.
+		bx, by := viewOf(e, e.Bx, e.By)
+		if math.Abs(bx) > 1e-6 || math.Abs(by+1) > 1e-6 {
+			t.Errorf("%s: the ball is not at the bottom of the map: (%.3f, %.3f)", key, bx, by)
+		}
+		var wantX, wantY float64
+		switch clock {
+		case "3": // sidehill: downhill is exactly across the putt line
+			wantX, wantY = -1, 0
+		case "12": // putting downhill: the fall line runs away from you
+			wantX, wantY = 0, 1
+		case "6": // putting uphill: it runs back at you
+			wantX, wantY = 0, -1
+		}
+		if math.Abs(dx-wantX) > 1e-6 || math.Abs(dy-wantY) > 1e-6 {
+			t.Errorf("%s: downhill points (%.3f, %.3f) on the map, want (%.0f, %.0f)",
+				key, dx, dy, wantX, wantY)
+		}
 	}
 }
 

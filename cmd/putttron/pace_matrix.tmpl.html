@@ -268,10 +268,18 @@ const closeBtn=modal.querySelector(".panel-close");
 const show={hull:true,50:false,80:false,95:true};
 let opener=null, current=null;
 
-// The map is drawn in the golfer's frame: rotate the green frame so the
-// error-free ball path arrives from the bottom. Then "long" is up and "short"
-// is down in every cell, matching the past/short figures beside it.
-const view=(d,x,y)=>[x*d.ay-y*d.ax, x*d.ax+y*d.ay];
+// The map is drawn in the golfer's frame: rotate the green frame so the line
+// you putted along runs up the page, with the ball at the bottom. A rotation
+// preserves angles, so the fall line lands where it belongs relative to your
+// stance — dead sideways on a sidehill putt, straight up on a downhill one —
+// the same way in every cell.
+//
+// The ball's direction of travel AT THE HOLE is a different thing: on a
+// breaking putt the ball is still curving as it arrives, up to ~36° away from
+// the line it started on. It gets drawn separately, because it is the axis the
+// past/short figures are measured along.
+const upline=d=>[-d.bx,-d.by];                        // hole -> ball, reversed
+const view=(d,x,y)=>{ const [ux,uy]=upline(d); return [x*uy-y*ux, x*ux+y*uy]; };
 
 function extentCm(d){
   let m=2*FOOT_CM;
@@ -336,19 +344,31 @@ function svgFor(d,cell,ft,slope){
     s+=`<polygon points="${ringPath(d,d.hull)}" fill="none" stroke="var(--ink-2)"
       stroke-width="${(lw*1.8).toFixed(2)}" stroke-dasharray="${(lw*9).toFixed(1)} ${(lw*5).toFixed(1)}"/>`;
 
+  // The ball's heading as it reaches the hole. It differs from the line you
+  // putted along whenever the putt breaks, and it is the axis "past the hole"
+  // is measured along, so it is worth showing rather than assuming.
+  const [tx,ty]=view(d,d.ax,d.ay), T=E*0.30;
+  s+=`<line x1="${(-T*tx*0.55).toFixed(1)}" y1="${(T*ty*0.55).toFixed(1)}"
+    x2="${(T*tx).toFixed(1)}" y2="${(-T*ty).toFixed(1)}" stroke="var(--ink-3)"
+    stroke-width="${(lw*1.4).toFixed(2)}" stroke-dasharray="${(lw*4).toFixed(1)} ${(lw*3).toFixed(1)}"/>`;
+  s+=arrow(T*tx*0.72,-T*ty*0.72,T*tx,-T*ty,"var(--ink-3)",lw*1.6,E);
+
   s+=`<circle cx="0" cy="0" r="${HOLE_CM}" fill="var(--card)" stroke="var(--ink)"
     stroke-width="${(lw*2.2).toFixed(2)}"/>`;
 
-  // The ball starts far off-map (10-20 ft), so mark the direction it came from.
-  s+=arrow(0,E*0.95,0,E*0.76,"var(--ink-3)",lw*2,E);
-  s+=`<text x="${(fs*0.6).toFixed(1)}" y="${(E*0.9).toFixed(1)}" fill="var(--ink-3)"
-    font-size="${fs.toFixed(1)}" font-family="ui-monospace,monospace">ball, ${ft} ft back</text>`;
+  // The ball is off-map (10-20 ft back), straight down the line you putted on.
+  s+=arrow(0,E*0.95,0,E*0.76,"var(--ink-2)",lw*2.2,E);
+  s+=`<text x="${(fs*0.6).toFixed(1)}" y="${(E*0.9).toFixed(1)}" fill="var(--ink-2)"
+    font-size="${fs.toFixed(1)}" font-family="ui-monospace,monospace">you putt from here, ${ft} ft back</text>`;
 
   if(slope!==0){
-    // Downhill is +X in the green frame; show where that points in this view.
-    const [fx,fy]=view(d,1,0), L=E*0.15, ax=-E*0.76, ay=-E*0.78;
-    s+=arrow(ax,ay,ax+L*fx,ay-L*fy,"var(--ink-3)",lw*2,E);
-    s+=`<text x="${(ax-fs*0.4).toFixed(1)}" y="${(ay-fs*0.7).toFixed(1)}" fill="var(--ink-3)"
+    // Downhill is +X in the green frame. Because the view is rotated by the
+    // putt line, this always lands the same way for a given clock position:
+    // sideways on a sidehill putt, straight up on a downhill one, straight
+    // back at you on an uphill one.
+    const [fx,fy]=view(d,1,0), L=E*0.17, ax=-E*0.74, ay=-E*0.74;
+    s+=arrow(ax-L*fx/2,ay+L*fy/2,ax+L*fx/2,ay-L*fy/2,"var(--r4)",lw*2.4,E);
+    s+=`<text x="${(ax-fs*1.6).toFixed(1)}" y="${(ay-L*0.62-fs*0.4).toFixed(1)}" fill="var(--r4)"
       font-size="${fs.toFixed(1)}" font-family="ui-monospace,monospace">downhill</text>`;
   }
   return s+`</svg>`;
@@ -406,10 +426,12 @@ function renderPanel(){
       ${p}% of misses · ${(lvl.a*M2FT2).toFixed(1)} ft²</label>`;
   }
   panelToggles.innerHTML=t;
-  panelFoot.innerHTML=`The view is rotated so the error-free ball path arrives from the
-    bottom — up is past the hole, down is short. Dots are where missed putts came to rest
-    (hole drawn to scale). The percentage contours are highest-density regions: the
-    smallest area holding that share of the misses.`;
+  panelFoot.innerHTML=`You are putting from the bottom of the map, straight up the page,
+    to the hole at the center (drawn to scale). Dots are where missed putts came to rest.
+    The dashed arrow at the hole is where the ball is actually <em>heading</em> as it gets
+    there: on a breaking putt it is still curving, so it leaves your start line — and that
+    is the direction the "past the hole" figure is measured along. The percentage contours
+    are highest-density regions: the smallest area holding that share of the misses.`;
 }
 
 panelToggles.addEventListener("change",e=>{

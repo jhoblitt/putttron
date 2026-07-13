@@ -25,7 +25,8 @@ type dispCell struct {
 	rollout                         float64
 	nTrials, nHoled, nRunaway, nOff int
 	nMiss                           int
-	axis                            physics.Vec2
+	ball                            physics.Vec2 // where the putt was struck from
+	axis                            physics.Vec2 // travel direction at the hole
 	pts                             []missPt
 }
 
@@ -110,6 +111,7 @@ func cmdDispersion(args []string) {
 		}
 
 		c.nTrials = *trials
+		c.ball = ball
 		c.axis = res.Axis
 		var misses []missPt
 		for t, o := range outs {
@@ -212,11 +214,12 @@ func writeDispPoints(path string, cells []dispCell) {
 
 func writeDispCells(path string, cells []dispCell) {
 	var b strings.Builder
-	b.WriteString("stimp,skill,slope_pct,clock,length_ft,rollout_m,n_trials,n_holed,n_runaway,n_off_green,n_miss,n_kept,axis_x,axis_y\n")
+	b.WriteString("stimp,skill,slope_pct,clock,length_ft,rollout_m,n_trials,n_holed,n_runaway,n_off_green,n_miss,n_kept,ball_x_m,ball_y_m,axis_x,axis_y\n")
 	for _, c := range cells {
-		fmt.Fprintf(&b, "%g,%s,%g,%d,%g,%.2f,%d,%d,%d,%d,%d,%d,%.4f,%.4f\n",
+		fmt.Fprintf(&b, "%g,%s,%g,%d,%g,%.2f,%d,%d,%d,%d,%d,%d,%.3f,%.3f,%.4f,%.4f\n",
 			c.key.stimp, c.key.skill, c.key.slope, c.key.clock, c.key.lengthFt, c.rollout,
-			c.nTrials, c.nHoled, c.nRunaway, c.nOff, c.nMiss, len(c.pts), c.axis.X, c.axis.Y)
+			c.nTrials, c.nHoled, c.nRunaway, c.nOff, c.nMiss, len(c.pts),
+			c.ball.X, c.ball.Y, c.axis.X, c.axis.Y)
 	}
 	mustWrite(path, b.String())
 }
@@ -242,7 +245,10 @@ func writeDispManifest(path, in string, stimp float64, trials int, seed uint64, 
 	fmt.Fprintf(&b, "    green frame (+X downhill); holed and runaway trials appear only as counts\n")
 	fmt.Fprintf(&b, "  sampling: uniform stride down to stored_points_cap, with every convex-hull\n")
 	fmt.Fprintf(&b, "    vertex of the FULL miss set retained, so the hull area is exact\n")
-	fmt.Fprintf(&b, "  axis: unit direction of error-free travel at the hole (the past/short axis)\n")
+	fmt.Fprintf(&b, "  ball: where the putt was struck from, same frame as the points\n")
+	fmt.Fprintf(&b, "  axis: unit direction of error-free travel AT THE HOLE — the past/short axis.\n")
+	fmt.Fprintf(&b, "    On a breaking putt this is not the ball-to-hole line: the ball is still\n")
+	fmt.Fprintf(&b, "    curving as it arrives (up to ~36° away on a 5%% sidehill 10-footer)\n")
 	mustWrite(path, b.String())
 }
 
