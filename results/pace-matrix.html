@@ -280,6 +280,9 @@ let opener=null, current=null;
 // past/short figures are measured along.
 const upline=d=>[-d.bx,-d.by];                        // hole -> ball, reversed
 const view=(d,x,y)=>{ const [ux,uy]=upline(d); return [x*uy-y*ux, x*ux+y*uy]; };
+// Does the ball leave the line it started on? Straight up- and downhill putts
+// on a plane never do — there is no lateral force on them.
+const breaks=d=>{ const [tx]=view(d,d.ax,d.ay); return Math.abs(tx)>0.035; };  // ~2°
 
 function extentCm(d){
   let m=2*FOOT_CM;
@@ -344,14 +347,17 @@ function svgFor(d,cell,ft,slope){
     s+=`<polygon points="${ringPath(d,d.hull)}" fill="none" stroke="var(--ink-2)"
       stroke-width="${(lw*1.8).toFixed(2)}" stroke-dasharray="${(lw*9).toFixed(1)} ${(lw*5).toFixed(1)}"/>`;
 
-  // The ball's heading as it reaches the hole. It differs from the line you
-  // putted along whenever the putt breaks, and it is the axis "past the hole"
-  // is measured along, so it is worth showing rather than assuming.
+  // The ball's heading as it reaches the hole, drawn only when the putt breaks
+  // enough for it to leave the line you started on. On a straight up- or
+  // downhill putt it IS that line, and drawing it would just lay a dashed
+  // stripe through the densest part of the scatter for nothing.
   const [tx,ty]=view(d,d.ax,d.ay), T=E*0.30;
-  s+=`<line x1="${(-T*tx*0.55).toFixed(1)}" y1="${(T*ty*0.55).toFixed(1)}"
-    x2="${(T*tx).toFixed(1)}" y2="${(-T*ty).toFixed(1)}" stroke="var(--ink-3)"
-    stroke-width="${(lw*1.4).toFixed(2)}" stroke-dasharray="${(lw*4).toFixed(1)} ${(lw*3).toFixed(1)}"/>`;
-  s+=arrow(T*tx*0.72,-T*ty*0.72,T*tx,-T*ty,"var(--ink-3)",lw*1.6,E);
+  if(breaks(d)){
+    s+=`<line x1="${(-T*tx*0.55).toFixed(1)}" y1="${(T*ty*0.55).toFixed(1)}"
+      x2="${(T*tx).toFixed(1)}" y2="${(-T*ty).toFixed(1)}" stroke="var(--ink-3)"
+      stroke-width="${(lw*1.4).toFixed(2)}" stroke-dasharray="${(lw*4).toFixed(1)} ${(lw*3).toFixed(1)}"/>`;
+    s+=arrow(T*tx*0.72,-T*ty*0.72,T*tx,-T*ty,"var(--ink-3)",lw*1.6,E);
+  }
 
   s+=`<circle cx="0" cy="0" r="${HOLE_CM}" fill="var(--card)" stroke="var(--ink)"
     stroke-width="${(lw*2.2).toFixed(2)}"/>`;
@@ -427,11 +433,12 @@ function renderPanel(){
   }
   panelToggles.innerHTML=t;
   panelFoot.innerHTML=`You are putting from the bottom of the map, straight up the page,
-    to the hole at the center (drawn to scale). Dots are where missed putts came to rest.
-    The dashed arrow at the hole is where the ball is actually <em>heading</em> as it gets
-    there: on a breaking putt it is still curving, so it leaves your start line — and that
-    is the direction the "past the hole" figure is measured along. The percentage contours
-    are highest-density regions: the smallest area holding that share of the misses.`;
+    to the hole at the center (drawn to scale). Dots are where missed putts came to rest.` +
+    (breaks(d) ? ` The dashed arrow at the hole is where the ball is actually <em>heading</em>
+    as it gets there — this putt is still curving as it arrives, so it has left the line you
+    started on, and that is the direction the "past the hole" figure is measured along.` : ``) +
+    ` The percentage contours are highest-density regions: the smallest area holding that
+    share of the misses.`;
 }
 
 panelToggles.addEventListener("change",e=>{
