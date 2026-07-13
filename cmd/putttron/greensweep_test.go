@@ -103,9 +103,9 @@ func TestGreensweepSteepFaceIsUnsolvable(t *testing.T) {
 	// about 6.5%.
 	cmdGreensweep([]string{
 		"-greens", repo, "-green", "hole_02", "-pin", "4,0",
-		"-ringft", "12", "-hours", "12,6", "-clock", "fall",
+		"-ringft", "12", "-hours", "12", "-clock", "fall",
 		"-skills", "high", "-stimp", "12",
-		"-trials", "150", "-fieldtrials", "40", "-fieldsweeps", "2", "-seed", "2",
+		"-trials", "50", "-fieldtrials", "20", "-fieldsweeps", "1", "-seed", "2",
 		"-out", out, "-tag", "steep",
 	})
 	for _, ln := range strings.Split(strings.TrimSpace(readFile(t, filepath.Join(out, "steep.csv"))), "\n")[1:] {

@@ -119,13 +119,27 @@ func solveFrom(env *physics.Env, ball physics.Vec2, rollout, dist float64, aim A
 		return lat, wantLen - out.PathLen, true
 	}
 
+	// A trajectory that runs away or leaves the green is "too hot", so the
+	// speed is backed off and retried. But on a face steeper than the no-stop
+	// grade NO speed holds the ball, and grinding out all maxIter backoffs
+	// there is pure waste (0.85^60 is 5e-5 of the launch speed). Give up once
+	// a run of backoffs has cut the speed to a fifth and still not landed on
+	// a trajectory that stops.
+	const maxBackoff = 10
+	backoff := 0
+
 	f1, f2, ok := residual(aim)
 	for i := 0; i < maxIter; i++ {
 		if !ok {
-			aim.Speed *= 0.85 // runaway: back off and re-evaluate
+			backoff++
+			if backoff > maxBackoff {
+				return aim, false
+			}
+			aim.Speed *= 0.85
 			f1, f2, ok = residual(aim)
 			continue
 		}
+
 		if math.Abs(f1) < latTol && math.Abs(f2) < lenTol {
 			return aim, true
 		}
@@ -135,10 +149,15 @@ func solveFrom(env *physics.Env, ball physics.Vec2, rollout, dist float64, aim A
 		dSpeed := relSpeed * aim.Speed
 		h1, h2, hok := residual(Aim{Dir: aim.Dir, Speed: aim.Speed + dSpeed})
 		if !gok || !hok {
+			backoff++
+			if backoff > maxBackoff {
+				return aim, false
+			}
 			aim.Speed *= 0.9
 			f1, f2, ok = residual(aim)
 			continue
 		}
+		backoff = 0
 		j11, j12 := (g1-f1)/dDir, (h1-f1)/dSpeed
 		j21, j22 := (g2-f2)/dDir, (h2-f2)/dSpeed
 		det := j11*j22 - j12*j21

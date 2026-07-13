@@ -143,7 +143,7 @@ func TestServeRunLifecycle(t *testing.T) {
 
 	code, out := post(t, ts, `{"green":"hole_01","stimp":10,"pin":{"x":0,"y":0},
 		"ring":{"dist_ft":15,"hours":[12,6],"mode":"fall"},"skills":["mid"],
-		"quality":"quick","seed":7}`)
+		"quality":"quick","trials":150,"fieldtrials":40,"fieldsweeps":2,"seed":7}`)
 	if code != 202 {
 		t.Fatalf("POST /api/run = %d (%v)", code, out)
 	}
@@ -152,19 +152,7 @@ func TestServeRunLifecycle(t *testing.T) {
 		t.Fatal("no job id returned")
 	}
 
-	var job map[string]any
-	deadline := time.Now().Add(90 * time.Second)
-	for time.Now().Before(deadline) {
-		job = nil
-		getJSON(t, ts, "/api/job/"+id, &job)
-		if job["state"] == "done" || job["state"] == "error" {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if job["state"] != "done" {
-		t.Fatalf("job did not finish: %v", job)
-	}
+	job := awaitJob(t, ts, id)
 	res, _ := job["result"].(map[string]any)
 	if res == nil {
 		t.Fatal("finished job carries no result")
@@ -251,23 +239,11 @@ func TestServeRingOffGreen(t *testing.T) {
 	// out in the collar.
 	code, out := post(t, ts, `{"green":"hole_01","stimp":10,"pin":{"x":5,"y":0},
 		"ring":{"dist_ft":25,"hours":[12,3,6,9],"mode":"compass"},"skills":["mid"],
-		"quality":"quick","seed":3}`)
+		"quality":"quick","trials":150,"fieldtrials":40,"fieldsweeps":2,"seed":3}`)
 	if code != 202 {
 		t.Fatalf("POST = %d (%v)", code, out)
 	}
-	id := out["job"].(string)
-	var job map[string]any
-	for i := 0; i < 900; i++ {
-		job = nil
-		getJSON(t, ts, "/api/job/"+id, &job)
-		if job["state"] == "done" || job["state"] == "error" {
-			break
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
-	if job["state"] != "done" {
-		t.Fatalf("job did not finish: %v", job)
-	}
+	job := awaitJob(t, ts, out["job"].(string))
 	res := job["result"].(map[string]any)
 	balls := res["balls"].([]any)
 	skipped := 0
@@ -282,4 +258,24 @@ func TestServeRingOffGreen(t *testing.T) {
 	if len(balls) != 4 {
 		t.Errorf("%d ball positions reported, want all 4 hours accounted for", len(balls))
 	}
+}
+
+// awaitJob polls until the run finishes. The budget is generous: these are
+// Monte Carlo runs and CI runners are small.
+func awaitJob(t *testing.T, ts *httptest.Server, id string) map[string]any {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Minute)
+	for time.Now().Before(deadline) {
+		var job map[string]any
+		getJSON(t, ts, "/api/job/"+id, &job)
+		switch job["state"] {
+		case "done":
+			return job
+		case "error":
+			t.Fatalf("job failed: %v", job["error"])
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatal("job did not finish within the budget")
+	return nil
 }

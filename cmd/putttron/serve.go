@@ -346,6 +346,11 @@ type runRequest struct {
 	Lag        float64                  `json:"lag"`
 	OffPenalty float64                  `json:"offpenalty"`
 	Seed       uint64                   `json:"seed"`
+
+	// Explicit Monte Carlo sizing, overriding the quality preset.
+	Trials      int `json:"trials"`
+	FieldTrials int `json:"fieldtrials"`
+	FieldSweeps int `json:"fieldsweeps"`
 }
 
 func (s *server) handleRun(w http.ResponseWriter, r *http.Request) {
@@ -366,6 +371,15 @@ func (s *server) handleRun(w http.ResponseWriter, r *http.Request) {
 	q, ok := qualities[req.Quality]
 	if !ok {
 		q = qualities["quick"]
+	}
+	if req.Trials > 0 {
+		q.Trials = req.Trials
+	}
+	if req.FieldTrials > 0 {
+		q.FieldTrials = req.FieldTrials
+	}
+	if req.FieldSweeps > 0 {
+		q.FieldSweeps = req.FieldSweeps
 	}
 	g, err := s.loadGreen(req.Green, req.Stimp)
 	if err != nil {
