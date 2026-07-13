@@ -167,7 +167,7 @@ tr.skip td{color:var(--ink-3);font-style:italic}
   <div class="mapbar">
     <span id="pinfo">no pin — click the map</span>
     <span class="legend">slope
-      <span class="ramp"><i style="background:var(--r0)"></i><i style="background:var(--r1)"></i><i style="background:var(--r2)"></i><i style="background:var(--r3)"></i><i style="background:var(--r4)"></i><i style="background:var(--r5)"></i><i style="background:var(--r6)"></i></span>
+      <span class="ramp"><i style="background:var(--r1)"></i><i style="background:var(--r2)"></i><i style="background:var(--r3)"></i><i style="background:var(--r4)"></i><i style="background:var(--r5)"></i><i style="background:var(--r6)"></i></span>
       0–8%+</span>
   </div>
   <canvas id="map" width="1200" height="800"></canvas>
@@ -214,9 +214,17 @@ async function loadGreen(label){
 /* ---- geometry ----------------------------------------------------------- */
 let T={s:1,ox:0,oy:0};
 function fit(){
-  const [x0,y0,x1,y1]=G.bounds, pad=16;
+  // Frame the green, not the 12 m of collar around it: the collar is context,
+  // the green is the subject.
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  for(const r of G.outline) for(const [x,y] of r){
+    x0=Math.min(x0,x); x1=Math.max(x1,x); y0=Math.min(y0,y); y1=Math.max(y1,y);
+  }
+  const m=4;                                       // metres of surround to keep
+  x0-=m; x1+=m; y0-=m; y1+=m;
+  const pad=14;
   const s=Math.min((cv.width-2*pad)/(x1-x0),(cv.height-2*pad)/(y1-y0));
-  T={s, ox:(cv.width-(x1-x0)*s)/2 - x0*s, oy:(cv.height-(y1-y0)*s)/2 + y1*s};
+  T={s, ox:(cv.width-(x0+x1)*s)/2, oy:(cv.height+(y0+y1)*s)/2};
 }
 const X=x=>x*T.s+T.ox, Y=y=>T.oy-y*T.s;          // world -> canvas
 const invX=px=>(px-T.ox)/T.s, invY=py=>(T.oy-py)/T.s;
@@ -229,9 +237,11 @@ function pathRings(rings){
   }
 }
 
+// The ramp starts at r1: r0 is the neutral "no data" step, and a flat patch
+// painted with it reads as a hole in the green rather than a flat patch.
 function slopeColor(pct){
-  const steps=[css("--r0"),css("--r1"),css("--r2"),css("--r3"),css("--r4"),css("--r5"),css("--r6")];
-  return steps[Math.max(0,Math.min(6,Math.round(pct/8*6)))];
+  const steps=[css("--r1"),css("--r2"),css("--r3"),css("--r4"),css("--r5"),css("--r6")];
+  return steps[Math.max(0,Math.min(5,Math.round(pct/8*5)))];
 }
 
 /* ---- drawing ------------------------------------------------------------ */

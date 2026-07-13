@@ -250,7 +250,12 @@ func greenManifest(spec RunSpec, res *RunResult) string {
 		fmt.Fprintf(&b, "warning: pin grade exceeds the no-stop grade at this green speed\n")
 	}
 	if len(spec.Hours) > 0 {
-		fmt.Fprintf(&b, "ring: {dist_ft: %g, hours: %v, mode: %s}\n", spec.RingFt, spec.Hours, spec.ClockMode)
+		hours := make([]string, len(spec.Hours))
+		for i, h := range spec.Hours {
+			hours[i] = strconv.Itoa(h)
+		}
+		fmt.Fprintf(&b, "ring: {dist_ft: %g, hours: [%s], mode: %s}\n",
+			spec.RingFt, strings.Join(hours, ", "), spec.ClockMode)
 	} else {
 		fmt.Fprintf(&b, "ring: null  # explicit ball positions\n")
 	}

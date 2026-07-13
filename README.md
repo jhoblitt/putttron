@@ -28,6 +28,8 @@ too aggressive for weak ones at 15 ft and beyond.
 
 ## Usage
 
+Planar greens (the founding question):
+
 ```
 go run ./cmd/putttron calibrate    # calibration gate vs published make-% tables
 go run ./cmd/putttron sweep        # run the parameter-matrix sweep
@@ -38,5 +40,23 @@ go run ./cmd/putttron report -in results/sweep-planar-v3.csv -dispersion results
 On the live page, **clicking any heatmap cell** opens the dispersion map for
 that putt: every simulated miss's resting place, the total spread (convex
 hull, in ft²), and 50/80/95% probability contours.
+
+Real greens (Phase 2) — LiDAR surfaces from
+[crooked_tree_greens](https://github.com/jhoblitt/crooked_tree_greens):
+
+```
+git clone https://github.com/jhoblitt/crooked_tree_greens ~/github/crooked_tree_greens
+
+go run ./cmd/putttron serve        # interactive explorer at http://127.0.0.1:7888
+go run ./cmd/putttron greensweep -green hole_07 -pin "0,0" -ringft 20   # headless equivalent
+```
+
+`serve` renders the green (slope shading, 2.5 cm contours, fall lines), lets
+you click a pin and ball positions — or take the defaults: a ring at a chosen
+distance with a clock face of positions, where 12 o'clock sits directly
+upslope of the pin — then reports each position's optimal pace, make%, 3-putt%,
+off-green%, and draws the miss dispersion on the green itself. Every run shows
+its seed and hands back the `greensweep` command that reproduces it. Committed
+examples are in `results/greens/`.
 
 Results land in `results/`.

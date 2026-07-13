@@ -76,6 +76,11 @@ func TestGreensweepIntegration(t *testing.T) {
 			t.Errorf("manifest is missing %q", key)
 		}
 	}
+	// Go's %v prints a slice as "[1 2 3]", which is not a YAML sequence.
+	if !strings.Contains(man, "hours: [12, 3, 6, 9]") {
+		t.Errorf("the manifest's hours are not a valid YAML sequence:\n%s",
+			lineWith(man, "ring:"))
+	}
 
 	// Same seed, same numbers.
 	out2 := t.TempDir()
@@ -186,4 +191,13 @@ func TestExpandHome(t *testing.T) {
 	if got := expandHome("/abs/path"); got != "/abs/path" {
 		t.Errorf("expandHome mangled an absolute path: %q", got)
 	}
+}
+
+func lineWith(s, want string) string {
+	for _, ln := range strings.Split(s, "\n") {
+		if strings.Contains(ln, want) {
+			return ln
+		}
+	}
+	return "(not found)"
 }

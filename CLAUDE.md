@@ -71,14 +71,21 @@ type Surface interface {
     DecelCoeff(x, y, dirX, dirY float64) float64 // flat-equivalent rolling deceleration a_d (m/s²),
                                                  // direction-dependent to allow grain
 }
+
+// Bounded is optional: surfaces with a finite play area (heightmaps) report
+// where the green ends. Planar is unbounded. physics.Roll type-asserts it and
+// ends the putt at the first sample off the green.
+type Bounded interface{ OnGreen(x, y float64) bool }
 ```
 
 - `Planar`: analytic tilted plane, parameterized by slope as **% grade**
   (rise/run × 100 — the unit golfers, green books, and green_maps use; never
   degrees at any user-facing boundary). Phase 1 uses only this. Uniform
   friction derived from a Stimp value.
-- `Heightmap`: bilinear/bicubic interpolation over a regular grid — the
-  ingestion target for real greens (see "Real greens" below).
+- `Heightmap`: Catmull-Rom bicubic over a regular grid, with the analytic
+  gradient; real greens (see "Real greens" below). Carries two masks — the
+  modeled support and the putting surface inside it — because the source grid
+  deliberately extends past the green.
 - Grain (future): anisotropic friction, e.g.
   `a_roll = a0 * (1 + k_grain * cos(θ_roll − θ_grain))`, plus a lateral force
   term; parameterization comes from the grain section of `docs/literature.md`.
@@ -199,29 +206,62 @@ effective direction sigmas to those published tables in the first place.
    lag-policy/seed sensitivity slices (`sens-*.csv`), `findings-phase1.md`
    (headline answer),
    `optimal-rollout.md`, `breakout-slope-clock.md`, `pace-matrix.html`.
-2. **Phase 2 — real greens.** Ingest `green_maps` outputs; hole/ball placement
-   grids on real surfaces; per-green strategy maps.
+2. **Phase 2 — real greens (COMPLETE).** LiDAR greens from
+   `jhoblitt/crooked_tree_greens` (a green_maps output tree). `putttron serve`
+   is the interactive explorer (pick a green, click a pin and ball positions
+   or take the clock-ring defaults, run, see per-position pace/make/3-putt/
+   off-green and the miss dispersion drawn on the green); `putttron
+   greensweep` is the headless equivalent that writes committed CSV +
+   manifest. Showcase runs in `results/greens/`.
 3. **Phase 3 — richer physics** as literature justifies: grain (anisotropic
    friction), skid-phase sidespin, lip interaction, off-center capture
    refinements, green-reading bias models.
 
-## Real greens (`~/github/green_maps` interface)
+## Real greens (green_maps interface)
 
 The green_maps project (LiDAR → surface models, see its CLAUDE.md) emits per
-green: `heightmap.npz` — keys `z` (2D float32, meters, NaN outside green,
-row-major, north-up), `x0`, `y0` (UTM EPSG:6341 grid origin), `dx` (= dy,
-0.25 m), `local_origin` (green centroid UTM) — plus `mesh.obj`/`mesh.glb` in
-local centroid-origin coordinates, `meta.json`, and a repo-level
-`outputs/greens/index.json` enumerating greens.
+green: `heightmap.npz` — keys `z` (2D float32, meters, NaN outside the
+buffered polygon, row-major north-up), `x0`, `y0` (UTM EPSG:6341 grid origin),
+`dx` (= dy, 0.25 m), `local_origin` (green centroid UTM), plus `crs`/`layout`
+strings — with `meta.json` alongside and a repo-level
+`outputs/greens/index.json` enumerating greens. `internal/npz` reads it
+directly (npz = zip of npy; no cgo, no Python at sim time); `internal/course`
+loads and recenters it; `-greens` points at the clone (default
+`~/github/crooked_tree_greens`).
 
-putttron will read `heightmap.npz` directly (npz = zip of npy; a small npy
-parser is ~100 lines of Go — no cgo, no Python at sim time), recentering to
-`local_origin` on load. Caveats to honor from green_maps: vertical fidelity is
-macro-contour only (source RMSE ~5–10 cm; micro-break below noise floor), and
-cells outside the buffered polygon are NaN — treat NaN as out-of-bounds
-(putt ends, ball is "off the green"; score via a leave-distance penalty).
-Bicubic interpolation for `Elevation`, analytic derivative of the interpolant
-for `Gradient` — never finite-difference the raw grid at sub-cell scale.
+**THE GRID IS NOT THE GREEN.** green_maps buffers each green polygon by
+**12 m of collar** before gridding ("collar/surrounds provide sim boundary and
+fitting support"), so the NaN mask is the edge of the *modeled terrain*, not
+of the putting surface — the mask is ~3–5× the green's area. Taking it at face
+value lets a ball roll 12 m into the rough at green speed and lets a pin be
+cut in the surrounds. So `green.Heightmap` carries **two masks**:
+
+- **support** — the raw NaN mask, inpainted so `Elevation`/`Gradient` are
+  finite everywhere (the RK4 integrator samples a step past wherever the ball
+  is; a NaN there would poison the trajectory).
+- **putting surface** — the support eroded by `course.CollarBufferM` (exact
+  Euclidean distance transform, `geom.DistanceTransform`). This is what
+  `OnGreen` answers, what `physics.Roll` terminates on (`Outcome.OffGreen`),
+  and what a pin is validated against.
+
+The erosion self-validates and the loader checks it on every load: it recovers
+all 20 Crooked Tree greens to within 2% of the `green_area_m2` the pipeline
+reports for itself, and the mean slope over the recovered surface then matches
+the published `slope_mean_pct` to **0.2% on every green** — which simultaneously
+validates the npz reader, the recentering, and the analytic gradient. (Before
+this was understood, computed slopes ran 26–65% high, because they averaged
+the collar in.) If upstream changes its buffer, the loader warns instead of
+silently simulating a green three times its real size.
+
+Other caveats to honor: vertical fidelity is macro-contour only (source RMSE
+~5–10 cm; micro-break is below the noise floor, so 2.5 cm contours are the
+finest worth drawing), and `z` is float32 holding *absolute* ~715 m elevations,
+so it carries ~4e-5 m of quantization — irrelevant against that RMSE, but it
+is why gradient tests use a 1e-3 tolerance, not 1e-9. Catmull-Rom bicubic for
+`Elevation` with the **analytic** derivative for `Gradient` — never
+finite-difference the raw grid at sub-cell scale. The row axis runs
+north→south, so ∂/∂y carries a −1/dx factor; get that sign wrong and every
+green breaks the wrong way.
 
 ## Results & reporting
 
@@ -251,7 +291,17 @@ for `Gradient` — never finite-difference the raw grid at sub-cell scale.
 - `results/pace-matrix.html` is served at
   <https://jhoblitt.github.io/putttron/> by `.github/workflows/pages.yml`
   on every push to main. Workflow actions are SHA-pinned (pinact) and
-  actionlint-clean; Dependabot bumps the pins.
+  actionlint-clean; Dependabot bumps the pins. `.github/workflows/ci.yml`
+  runs gofmt, vet, build, and `go test -race` on every push and PR.
+- **Real-green runs** (`putttron greensweep`) write to `results/greens/`:
+  a CSV per (green, pin, ring) plus a manifest that pins the run to its
+  inputs — the greens repo path and `git describe`, the heightmap's sha256,
+  the pin, the ring spec, the seed and seed scheme, and the off-green
+  penalty. `putttron serve` exports the identical bytes for an interactive
+  run and prints the `greensweep` command that reproduces it. Tests that
+  need a green build one with `internal/course/coursetest` — CI never
+  touches the LiDAR clone; the real-data checks are env-guarded
+  (`PUTTTRON_GREENS_DIR=... go test ./internal/course/`).
 - Report uncertainty: Monte Carlo standard errors on make % and expected
   strokes; enough trials that the optimal-rollout argmin is stable (check by
   re-running with a different seed).
@@ -294,3 +344,13 @@ for `Gradient` — never finite-difference the raw grid at sub-cell scale.
   literature.md §2E); the symmetric Gaussian model can't reproduce that, so
   hcp30's 3-footers over-make by ~10 points. Bias terms are Phase 3 work —
   keep the caveat attached to weak-skill conclusions until then.
+- On real greens: the NaN mask is the green PLUS a 12 m collar, not the green
+  (see "Real greens"). Anything that asks "is the ball/pin on the green?" must
+  go through `OnGreen`, never the raw mask.
+- Real greens have faces steeper than the no-stop grade (Crooked Tree flags 8
+  of 18 above 8% sustained; hole_07 hits 10.9%). A pin there is not a bug: no
+  pace can hold the ball, so the solver fails and every row reports
+  `solve_failed`. Report that; don't "fix" it by loosening the solver.
+- Off-green scoring costs `OffPenalty` (default 0.5 strokes) on top of the
+  expected-strokes lookup at the exit point — it is a run parameter recorded
+  in every manifest, not a constant to hardcode against. See docs/physics.md.
