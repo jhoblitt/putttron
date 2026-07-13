@@ -42,6 +42,7 @@ putttron/
   CLAUDE.md               # this file
   README.md
   LICENSE                 # Apache-2.0
+  Makefile                # build, plus `make check` = the CI gate
   .github/workflows/      # pages.yml deploys results/pace-matrix.html on push to main
   docs/
     literature.md         # survey with citations; source of all human-error numbers
