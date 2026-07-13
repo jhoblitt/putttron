@@ -1,0 +1,35 @@
+generated: 2026-07-12T18:13:09-07:00
+git: c183f4a
+greens_repo: /home/jhoblitt/github/crooked_tree_greens
+greens_git: 5b26b21
+green: hole_01
+npz:
+  path: /home/jhoblitt/github/crooked_tree_greens/outputs/greens/hole_01/heightmap.npz
+  size: 53319
+  sha256: 730046e99ca3b061ea353a9f4100695ef44b8c01568ee8166b14346364760da2
+pin_local_m: [0.000, 0.000]
+slope_at_pin_pct: 1.38
+fall_azimuth_deg: 267.9  # bearing of upslope, from grid north
+ring: {dist_ft: 20, hours: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], mode: fall}
+stimp: 10
+seed: 1
+seed_scheme: "pcg(master ^ fnv1a(cell|green|pin|ball|skill), 0xce11); rollout excluded (CRN)"
+trials_per_cell: 8000
+field_trials_per_node: 1500
+field_sweeps: 5
+followup_lag_rollout_m: 0.25
+off_green_penalty_strokes: 0.5  # docs/physics.md
+physics:
+  capture_vc0_ms: 1.63
+  hole_radius_m: 0.054
+green_meta:
+  slope_mean_pct: 1.67
+  slope_max_sustained_pct: 3.33
+  fit_rms_m: 0.033
+  needs_review: false
+  flags: []
+  vertical_fidelity: "macro contours only; source RMSE ~5-10 cm; micro-break below noise floor"
+skills:  # docs/literature.md §5
+  tour: {dir_sigma_deg: 1.361, dir_sigma_deg_per_m: 0.147, dist_sigma_pct: 0.065, dist_sigma_floor_m: 0.02}
+  mid: {dir_sigma_deg: 1.71, dir_sigma_deg_per_m: 0.393, dist_sigma_pct: 0.077, dist_sigma_floor_m: 0.025}
+  hcp30: {dir_sigma_deg: 2.37, dir_sigma_deg_per_m: 0.268, dist_sigma_pct: 0.165, dist_sigma_floor_m: 0.04}
