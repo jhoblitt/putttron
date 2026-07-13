@@ -49,14 +49,28 @@ continue (rim dynamics beyond the capture criterion are not modeled).
 
 ## Off-green termination and scoring (Phase 2, bounded surfaces)
 
-Real-green heightmaps have a finite valid region (NaN cells in the source
-grid mark everything outside the buffered green polygon). Surfaces with a
-boundary implement `green.Bounded`; the integrator checks `OnGreen` each
-step and ends the putt at the first sample outside the region — the outcome
-records the exit point. The interpolated surface itself is inpainted to be
-finite everywhere, so leaving the region is a modeling decision, not a
-numerical necessity. The aim solver treats an exiting trajectory like a
-runaway ("too hot") and backs the speed off.
+**The grid is not the green.** The green_maps pipeline buffers each green
+polygon by 12 m of collar before gridding it, so the NaN mask marks the edge
+of the *modeled terrain*, not the edge of the putting surface — the collar is
+there to give the surface fit support and to give the simulator somewhere for
+the ball to run out to. Taking the mask at face value would let a ball roll 12
+m into the rough at green speed, and would let a "pin" be cut in the surrounds.
+
+putttron therefore carries two masks. The **support** is the raw NaN mask; it
+is inpainted so the interpolant is finite everywhere, because the integrator
+samples a step past wherever the ball is. The **putting surface** is that
+support eroded by the collar width (an exact Euclidean distance transform),
+and it is what `OnGreen` answers. The erosion is checked at load against the
+green area the pipeline reports for itself: on the Crooked Tree greens it
+recovers all 20 to within 2%, and the mean slope over the recovered surface
+then matches the pipeline's published `slope_mean_pct` to 0.2% on every green
+— which validates the reader, the recentering, and the analytic gradient at
+the same time. If an upstream change breaks that agreement, the loader says so.
+
+Surfaces with a boundary implement `green.Bounded`; the integrator checks
+`OnGreen` each step and ends the putt at the first sample off the green — the
+outcome records the exit point. The aim solver treats an exiting trajectory
+like a runaway ("too hot") and backs the speed off.
 
 Scoring: an off-green trial is charged
 

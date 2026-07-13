@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,6 +22,19 @@ import (
 // layoutContract is what the loader requires of the npz layout string; any
 // drift in grid orientation upstream must fail loudly, not misread the map.
 const layoutContract = "row-major north-up"
+
+// CollarBufferM is how far the green_maps pipeline buffers each green polygon
+// before gridding it ("collar/surrounds provide sim boundary and fitting
+// support"). The gridded mask is therefore NOT the green: it is the green
+// dilated by this much. Eroding it back recovers the putting surface — a
+// claim the loader checks against the green area the pipeline reports, so a
+// change in the upstream buffer shows up as a warning rather than a green
+// silently three times its real size.
+const CollarBufferM = 12.0
+
+// greenAreaTolerance is how far the recovered putting surface may fall from
+// the pipeline's own green area before the loader complains.
+const greenAreaTolerance = 0.20
 
 type Index struct {
 	Course        string      `json:"course"`
@@ -65,12 +79,13 @@ type Meta struct {
 // Green is one loaded green: its surface in the local frame (origin at the
 // green centroid) plus provenance for manifests.
 type Green struct {
-	Info      GreenInfo
-	Meta      Meta
-	Surf      *green.Heightmap
-	NPZPath   string
-	NPZSize   int64
-	NPZSHA256 string
+	Info        GreenInfo
+	Meta        Meta
+	Surf        *green.Heightmap
+	GreenAreaM2 float64 // putting surface recovered from the buffered grid
+	NPZPath     string
+	NPZSize     int64
+	NPZSHA256   string
 }
 
 // LoadIndex reads outputs/greens/index.json under repoDir.
@@ -186,6 +201,15 @@ func LoadGreen(idx *Index, label string, decel float64) (*Green, error) {
 		}
 	} else {
 		fmt.Fprintf(os.Stderr, "warning: %s missing (continuing without meta)\n", metaPath)
+	}
+
+	g.GreenAreaM2 = surf.InsetGreen(CollarBufferM)
+	if want := g.Meta.GreenAreaM2; want > 0 {
+		if off := math.Abs(g.GreenAreaM2-want) / want; off > greenAreaTolerance {
+			fmt.Fprintf(os.Stderr,
+				"warning: %s: eroding the %g m collar gives a %.0f m² putting surface but the pipeline reports %.0f m² (%.0f%% off) — has the upstream buffer changed?\n",
+				label, CollarBufferM, g.GreenAreaM2, want, 100*off)
+		}
 	}
 	return g, nil
 }

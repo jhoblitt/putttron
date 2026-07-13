@@ -15,17 +15,8 @@ func fixture(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	specs := []coursetest.Spec{
-		coursetest.PlaneSpec("hole_01", 40, 40, 2),
-		{
-			Label: "hole_02", Hole: 2, Rows: 40, Cols: 40,
-			Z: func(i, j int) float64 { return 0.01 * float64(i) },
-			NaN: func(i, j int) bool {
-				return i < 4 || j < 4 || i >= 36 || j >= 36
-			},
-			Flags:                []string{"max_sustained_10.9%_gt_8%"},
-			NeedsReview:          true,
-			SlopeMaxSustainedPct: 10.9,
-		},
+		coursetest.PlaneSpec("hole_01", 9, 2),
+		coursetest.SteepSpec("hole_02", 9),
 	}
 	if err := coursetest.Build(dir, specs); err != nil {
 		t.Fatal(err)
@@ -67,12 +58,20 @@ func TestLoadGreenRecenters(t *testing.T) {
 	if z := g.Surf.Elevation(0, 0); math.Abs(z) > 0.5 {
 		t.Errorf("elevation at the local origin = %.3f m, want ~0 (recentered)", z)
 	}
-	rows, cols := g.Surf.GridSize()
-	if rows != 40 || cols != 40 {
-		t.Errorf("grid %dx%d, want 40x40", rows, cols)
-	}
 	if !g.Surf.OnGreen(0, 0) {
-		t.Error("center of a fully-valid green reported off-green")
+		t.Error("center of the green reported off-green")
+	}
+	// The fixture is a 9 m green inside a 12 m collar: the loader must erode
+	// the collar back off, so a point out in it is NOT on the green even
+	// though the terrain there is modeled.
+	if g.Surf.OnGreen(15, 0) {
+		t.Error("a point 15 m out — in the collar — is on the green")
+	}
+	if v := g.Surf.Elevation(15, 0); math.IsNaN(v) {
+		t.Error("elevation is undefined in the collar, where the ball still gets sampled")
+	}
+	if want := math.Pi * 81; math.Abs(g.GreenAreaM2-want)/want > 0.05 {
+		t.Errorf("recovered putting surface %.0f m², want the fixture's %.0f m²", g.GreenAreaM2, want)
 	}
 	// The synthetic plane falls 2% toward +X. The tolerance absorbs the
 	// float32 quantization of the absolute (~715 m) elevations the file
@@ -103,16 +102,15 @@ func TestLoadGreenMaskAndMeta(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !g.Meta.NeedsReview || g.Meta.SlopeMaxSustainedPct != 10.9 {
+	if !g.Meta.NeedsReview || g.Meta.SlopeMaxSustainedPct != 12 {
 		t.Errorf("meta not loaded: %+v", g.Meta)
 	}
 	if !g.Surf.OnGreen(0, 0) {
 		t.Error("center reported off-green")
 	}
-	// The border four cells deep is NaN; the far corner must be off-green.
 	x0, y0 := g.Surf.Origin()
 	if g.Surf.OnGreen(x0, y0) {
-		t.Error("NaN corner reported on-green")
+		t.Error("the grid corner, outside the modeled disc, reported on-green")
 	}
 	if _, err := LoadGreen(idx, "hole_99", 0.55); err == nil {
 		t.Error("unknown label did not error")
@@ -175,6 +173,49 @@ func TestRealGreens(t *testing.T) {
 		rows, cols := g.Surf.GridSize()
 		if rows != info.GridShape[0] || cols != info.GridShape[1] {
 			t.Errorf("%s: grid %dx%d, index says %v", info.Label, rows, cols, info.GridShape)
+		}
+	}
+}
+
+// The pipeline buffers each green by a collar before gridding, so the loader
+// erodes that back off. Check the recovered putting surface against the green
+// area the pipeline itself reports — the whole justification for the erosion.
+func TestRealGreensPuttingSurface(t *testing.T) {
+	dir := os.Getenv("PUTTTRON_GREENS_DIR")
+	if dir == "" {
+		t.Skip("set PUTTTRON_GREENS_DIR to a crooked_tree_greens clone")
+	}
+	idx, err := LoadIndex(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, info := range idx.Greens {
+		g, err := LoadGreen(idx, info.Label, 0.55)
+		if err != nil {
+			t.Fatalf("%s: %v", info.Label, err)
+		}
+		want := g.Meta.GreenAreaM2
+		if want == 0 {
+			continue
+		}
+		if off := math.Abs(g.GreenAreaM2-want) / want; off > 0.05 {
+			t.Errorf("%s: recovered putting surface %.0f m², pipeline says %.0f m² (%.1f%% off)",
+				info.Label, g.GreenAreaM2, want, 100*off)
+		}
+		// The modeled grid must still be much larger — that is the collar.
+		rows, cols := g.Surf.GridSize()
+		support := 0
+		for i := 0; i < rows; i++ {
+			for j := 0; j < cols; j++ {
+				if g.Surf.ValidAt(i, j) {
+					support++
+				}
+			}
+		}
+		supportArea := float64(support) * 0.25 * 0.25
+		if supportArea < 2*g.GreenAreaM2 {
+			t.Errorf("%s: modeled support %.0f m² is not meaningfully larger than the green %.0f m²",
+				info.Label, supportArea, g.GreenAreaM2)
 		}
 	}
 }

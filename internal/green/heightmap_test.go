@@ -170,3 +170,53 @@ func TestHeightmapWithDecel(t *testing.T) {
 		t.Error("WithDecel changed the surface")
 	}
 }
+
+// A grid whose support runs past the putting surface (a collar buffer) must
+// report OnGreen for the surface only, while elevation stays defined out to
+// the edge of the support — the integrator samples past wherever the ball is.
+func TestHeightmapInsetGreen(t *testing.T) {
+	const rows, cols, dx = 80, 80, 0.25
+	x0, y0 := -10.0, 10.0
+	const support = 6.0 // radius of the modeled disc, m
+	z := make([]float64, rows*cols)
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
+			x := x0 + float64(j)*dx
+			y := y0 - float64(i)*dx
+			if math.Hypot(x, y) > support {
+				z[i*cols+j] = math.NaN()
+				continue
+			}
+			z[i*cols+j] = -0.02 * x
+		}
+	}
+	h, err := NewHeightmap(z, rows, cols, x0, y0, dx, 0.55)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !h.OnGreen(5.5, 0) {
+		t.Fatal("before insetting, the whole support should be on-green")
+	}
+
+	const collar = 2.0
+	area := h.InsetGreen(collar)
+	wantR := support - collar
+	if !h.OnGreen(wantR-0.5, 0) {
+		t.Errorf("a point %.1f m from center is off-green after a %.0f m inset", wantR-0.5, collar)
+	}
+	if h.OnGreen(wantR+0.5, 0) {
+		t.Errorf("a point out in the collar (%.1f m) is still on-green", wantR+0.5)
+	}
+	// Grid quantization fattens the rasterized disc by up to a cell.
+	lo, hi := math.Pi*wantR*wantR, math.Pi*(wantR+dx)*(wantR+dx)
+	if area < lo || area > hi {
+		t.Errorf("inset area = %.1f m², want between %.1f and %.1f", area, lo, hi)
+	}
+	// Elevation must still be defined out in the collar.
+	if v := h.Elevation(5.5, 0); math.IsNaN(v) || math.Abs(v-(-0.02*5.5)) > 1e-6 {
+		t.Errorf("elevation in the collar = %v, want the modeled surface", v)
+	}
+	if h.WithDecel(0.4).OnGreen(wantR+0.5, 0) {
+		t.Error("WithDecel did not carry the putting-surface mask")
+	}
+}

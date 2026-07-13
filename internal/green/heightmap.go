@@ -4,19 +4,27 @@ import (
 	"errors"
 	"fmt"
 	"math"
+
+	"github.com/jhoblitt/putttron/internal/geom"
 )
 
 // Heightmap is a Surface over a regular elevation grid in the local frame,
 // north-up row-major: node (i, j) sits at (x0 + j·dx, y0 − i·dx), so row
-// index grows southward and y0 is the northern edge. Cells that were NaN in
-// the source grid are off-green: they are inpainted so the interpolant is
-// finite everywhere (the integrator samples slightly past the boundary), and
-// the original mask drives OnGreen.
+// index grows southward and y0 is the northern edge.
+//
+// Two masks, deliberately distinct. `valid` is the grid's SUPPORT — the cells
+// the source model actually covers (NaN elsewhere); it is inpainted so the
+// interpolant is finite everywhere, because the integrator samples a step past
+// wherever the ball is. `green` is the PUTTING SURFACE, which may be smaller:
+// a pipeline that buffers each green with its collar before gridding needs
+// that collar for spline support but it is not somewhere a ball is on the
+// green. OnGreen answers the second question. See InsetGreen.
 type Heightmap struct {
 	rows, cols int
 	x0, y0, dx float64
 	z          []float64 // inpainted, row-major [i*cols+j]
-	valid      []bool    // original NaN mask
+	valid      []bool    // grid support (source NaN mask)
+	green      []bool    // putting surface; defaults to the support
 	decel      float64   // uniform a_d, m/s²
 }
 
@@ -56,8 +64,38 @@ func NewHeightmap(z []float64, rows, cols int, x0, y0, dx, decel float64) (*Heig
 	if nValid == 0 {
 		return nil, errors.New("grid has no valid cells")
 	}
+	h.green = h.valid
 	h.inpaint()
 	return h, nil
+}
+
+// InsetGreen shrinks the putting surface to the cells at least dist meters
+// inside the grid's support, and reports the resulting area. Use it when the
+// source grid deliberately extends past the green (a collar buffer added for
+// spline support): the ball is off the green well before it runs out of
+// modeled terrain.
+func (h *Heightmap) InsetGreen(dist float64) float64 {
+	if dist <= 0 {
+		h.green = h.valid
+		return h.GreenAreaM2()
+	}
+	d := geom.DistanceTransform(h.valid, h.cols, h.rows, h.dx)
+	h.green = make([]bool, len(h.valid))
+	for i := range h.green {
+		h.green[i] = d[i] >= dist
+	}
+	return h.GreenAreaM2()
+}
+
+// GreenAreaM2 is the area of the putting surface.
+func (h *Heightmap) GreenAreaM2() float64 {
+	n := 0
+	for _, ok := range h.green {
+		if ok {
+			n++
+		}
+	}
+	return float64(n) * h.dx * h.dx
 }
 
 func (h *Heightmap) inpaint() {
@@ -217,9 +255,9 @@ func (h *Heightmap) Gradient(x, y float64) (gx, gy float64) {
 
 func (h *Heightmap) DecelCoeff(x, y, dirX, dirY float64) float64 { return h.decel }
 
-// OnGreen reports whether the point lies in the valid (non-NaN) region:
-// inside the grid rectangle and with the bilinearly interpolated 0/1 mask at
-// least 0.5 — the boundary sits halfway between a valid node and a NaN node.
+// OnGreen reports whether the point is on the putting surface: inside the
+// grid rectangle and with the bilinearly interpolated 0/1 mask at least 0.5 —
+// the boundary sits halfway between an on-green node and an off-green one.
 func (h *Heightmap) OnGreen(x, y float64) bool {
 	fc := (x - h.x0) / h.dx
 	fr := (h.y0 - y) / h.dx
@@ -231,7 +269,7 @@ func (h *Heightmap) OnGreen(x, y float64) bool {
 	tr := fr - float64(i0)
 	tc := fc - float64(j0)
 	m := func(i, j int) float64 {
-		if h.valid[i*h.cols+j] {
+		if h.green[i*h.cols+j] {
 			return 1
 		}
 		return 0
@@ -258,8 +296,12 @@ func (h *Heightmap) NodePos(i, j int) (x, y float64) {
 	return h.x0 + float64(j)*h.dx, h.y0 - float64(i)*h.dx
 }
 
-// ValidAt reports the original (pre-inpaint) validity of node (i, j).
+// ValidAt reports whether node (i, j) is inside the grid's support (the
+// modeled terrain), which may extend past the putting surface.
 func (h *Heightmap) ValidAt(i, j int) bool { return h.valid[i*h.cols+j] }
+
+// GreenAt reports whether node (i, j) is on the putting surface.
+func (h *Heightmap) GreenAt(i, j int) bool { return h.green[i*h.cols+j] }
 
 // ZAt returns the (inpainted) elevation at node (i, j).
 func (h *Heightmap) ZAt(i, j int) float64 { return h.z[i*h.cols+j] }

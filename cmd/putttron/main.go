@@ -22,6 +22,10 @@ func main() {
 		cmdDispersion(os.Args[2:])
 	case "report":
 		cmdReport(os.Args[2:])
+	case "greensweep":
+		cmdGreensweep(os.Args[2:])
+	case "serve":
+		cmdServe(os.Args[2:])
 	default:
 		usage()
 	}
@@ -36,6 +40,8 @@ commands:
   sweep       full parameter-matrix sweep for optimal rollout
   dispersion  record where the misses finish at each cell's optimal pace
   report      summarize a sweep CSV into results/optimal-rollout.md
+  greensweep  sweep a pin and ball positions on a real (LiDAR) green
+  serve       interactive green explorer: pick a pin and putt from it
 `)
 	os.Exit(2)
 }

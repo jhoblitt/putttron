@@ -1,0 +1,470 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>putttron — green explorer</title>
+<style>
+:root{
+  --paper:#f7f7f3; --card:#fdfdfb; --ink:#181c15; --ink-2:#565b50; --ink-3:#8a8f82;
+  --rule:#e2e3da; --rule-2:#cfd1c5;
+  --r0:#eef3ef; --r1:#cde2fb; --r2:#9ec5f4; --r3:#5598e7; --r4:#2a78d6; --r5:#1c5cab; --r6:#104281;
+  --ink-on-deep:#f5f8fc; --warn:#8a5a00; --warn-bg:#fdf3e0;
+  --turf:#e8efe6; --turf-line:#c3d2bd;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --paper:#191b17; --card:#20231e; --ink:#f2f2ec; --ink-2:#b3b7aa; --ink-3:#7d8175;
+    --rule:#31352c; --rule-2:#41453a;
+    --r0:#242822; --r1:#0d366b; --r2:#1c5cab; --r3:#2a78d6; --r4:#5598e7; --r5:#9ec5f4; --r6:#cde2fb;
+    --ink-on-deep:#f5f8fc; --warn:#f0c980; --warn-bg:#3a2e14;
+    --turf:#232821; --turf-line:#3b4536;
+  }
+}
+:root[data-theme="light"]{
+  --paper:#f7f7f3; --card:#fdfdfb; --ink:#181c15; --ink-2:#565b50; --ink-3:#8a8f82;
+  --rule:#e2e3da; --rule-2:#cfd1c5; --turf:#e8efe6; --turf-line:#c3d2bd;
+  --r0:#eef3ef; --r1:#cde2fb; --r2:#9ec5f4; --r3:#5598e7; --r4:#2a78d6; --r5:#1c5cab; --r6:#104281;
+  --warn:#8a5a00; --warn-bg:#fdf3e0;
+}
+:root[data-theme="dark"]{
+  --paper:#191b17; --card:#20231e; --ink:#f2f2ec; --ink-2:#b3b7aa; --ink-3:#7d8175;
+  --rule:#31352c; --rule-2:#41453a; --turf:#232821; --turf-line:#3b4536;
+  --r0:#242822; --r1:#0d366b; --r2:#1c5cab; --r3:#2a78d6; --r4:#5598e7; --r5:#9ec5f4; --r6:#cde2fb;
+  --warn:#f0c980; --warn-bg:#3a2e14;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);
+  font:14px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+header{border-bottom:2px solid var(--ink);padding:16px 22px 12px}
+.eyebrow{font:600 10.5px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--ink-3);margin:0 0 6px}
+h1{font-family:"Iowan Old Style",Palatino,Georgia,serif;font-size:24px;font-weight:600;margin:0}
+h1 span{color:var(--ink-3);font-size:14px;font-family:ui-monospace,monospace;font-weight:400;margin-left:10px}
+main{display:grid;grid-template-columns:270px minmax(0,1fr);gap:0;align-items:start}
+@media(max-width:900px){main{grid-template-columns:1fr}}
+aside{border-right:1px solid var(--rule);padding:18px 18px 40px;position:sticky;top:0;
+  max-height:100vh;overflow:auto}
+section.map{padding:18px 22px 40px;min-width:0}
+fieldset{border:none;border-top:1px solid var(--rule);margin:0 0 16px;padding:12px 0 0}
+fieldset:first-child{border-top:none;padding-top:0}
+legend{font:600 10.5px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.07em;
+  text-transform:uppercase;color:var(--ink-3);padding:0 0 8px}
+label{display:block;margin-bottom:8px;color:var(--ink-2);font-size:13px}
+label.inline{display:flex;align-items:center;gap:7px;margin-bottom:5px;cursor:pointer}
+select,input[type=number],input[type=text]{width:100%;background:var(--card);color:var(--ink);
+  border:1px solid var(--rule-2);border-radius:5px;padding:6px 8px;font:13px/1.3 ui-monospace,monospace}
+input[type=checkbox],input[type=radio]{accent-color:var(--r4);margin:0}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+button{background:var(--r4);color:#fff;border:none;border-radius:6px;padding:9px 14px;
+  font:600 13px/1 system-ui;cursor:pointer;width:100%}
+button:hover{background:var(--r5)}
+button:disabled{opacity:.5;cursor:not-allowed}
+button.ghost{background:none;color:var(--ink-2);border:1px solid var(--rule-2);font-weight:400}
+button.ghost:hover{background:var(--card);color:var(--ink)}
+.seg{display:flex;border:1px solid var(--rule-2);border-radius:6px;overflow:hidden}
+.seg button{border-radius:0;background:var(--card);color:var(--ink-2);font-weight:400;padding:7px 4px;
+  border-right:1px solid var(--rule-2)}
+.seg button:last-child{border-right:none}
+.seg button[aria-pressed=true]{background:var(--r4);color:#fff}
+canvas{width:100%;height:auto;display:block;background:var(--turf);border:1px solid var(--rule-2);
+  border-radius:8px;cursor:crosshair;touch-action:none}
+.mapbar{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;margin-bottom:10px;
+  font:12px/1 ui-monospace,monospace;color:var(--ink-3)}
+.mapbar b{color:var(--ink)}
+.badge{display:inline-block;background:var(--warn-bg);color:var(--warn);border-radius:99px;
+  padding:2px 9px;font:600 11px/1.5 ui-monospace,monospace}
+.note{background:var(--warn-bg);color:var(--warn);border-radius:6px;padding:9px 11px;
+  font-size:12.5px;margin:10px 0}
+.hint{color:var(--ink-3);font-size:12px;margin:8px 0 0}
+table{border-collapse:collapse;width:100%;margin-top:14px;font-variant-numeric:tabular-nums;
+  font-size:13px}
+th,td{text-align:right;padding:6px 9px;border-bottom:1px solid var(--rule)}
+th{font:600 10.5px/1.3 ui-monospace,monospace;letter-spacing:.05em;text-transform:uppercase;
+  color:var(--ink-3);border-bottom:1px solid var(--rule-2)}
+th:first-child,td:first-child{text-align:left}
+tbody tr:hover{background:var(--card)}
+tbody tr.sel{background:var(--r1);color:var(--ink)}
+tr.skip td{color:var(--ink-3);font-style:italic}
+.prog{height:5px;background:var(--rule);border-radius:99px;overflow:hidden;margin:10px 0}
+.prog i{display:block;height:100%;background:var(--r4);width:0;transition:width .25s}
+.repro{background:var(--card);border:1px solid var(--rule);border-radius:6px;padding:9px 11px;
+  font:11.5px/1.5 ui-monospace,monospace;color:var(--ink-2);word-break:break-all;margin-top:12px}
+.legend{display:flex;gap:14px;align-items:center;font:11px/1 ui-monospace,monospace;color:var(--ink-3)}
+.ramp{display:flex}.ramp i{width:20px;height:10px}
+.err{color:#b3261e;font-size:13px;margin-top:10px}
+</style>
+</head>
+<body>
+<header>
+  <p class="eyebrow">putttron · green explorer</p>
+  <h1>Real greens <span id="course"></span></h1>
+</header>
+
+<main>
+<aside>
+  <fieldset>
+    <legend>green</legend>
+    <label>
+      <select id="green"></select>
+    </label>
+    <div id="green-flags"></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>place</legend>
+    <div class="seg" role="group" aria-label="click mode">
+      <button type="button" id="m-pin" aria-pressed="true">pin</button>
+      <button type="button" id="m-ball" aria-pressed="false">ball</button>
+    </div>
+    <p class="hint" id="place-hint">Click the map to drop the pin.</p>
+    <button type="button" class="ghost" id="clear-balls" style="margin-top:8px">clear extra balls</button>
+  </fieldset>
+
+  <fieldset>
+    <legend>ball positions</legend>
+    <label class="inline"><input type="checkbox" id="use-ring" checked> ring around the pin</label>
+    <div class="row2">
+      <label>distance (ft)<input type="number" id="ringft" value="20" min="3" max="60" step="1"></label>
+      <label>hours<input type="text" id="hours" value="1-12"></label>
+    </div>
+    <div class="seg" role="group" aria-label="clock frame">
+      <button type="button" id="c-fall" aria-pressed="true">12 = upslope</button>
+      <button type="button" id="c-compass" aria-pressed="false">12 = north</button>
+    </div>
+    <p class="hint">Fall-line: 12 o'clock sits above the hole, so it putts downhill.</p>
+  </fieldset>
+
+  <fieldset>
+    <legend>simulation</legend>
+    <div id="skills"></div>
+    <div class="row2" style="margin-top:8px">
+      <label>stimp<input type="number" id="stimp" value="10" min="6" max="14" step="0.5"></label>
+      <label>seed<input type="number" id="seed" value="1" min="0"></label>
+    </div>
+    <div class="seg" role="group" aria-label="quality" style="margin-bottom:10px">
+      <button type="button" id="q-quick" aria-pressed="true">quick</button>
+      <button type="button" id="q-full" aria-pressed="false">full</button>
+    </div>
+    <button type="button" id="run">run simulation</button>
+    <div class="prog" id="prog" hidden><i></i></div>
+    <p class="hint" id="progtext"></p>
+    <p class="err" id="err"></p>
+  </fieldset>
+
+  <fieldset>
+    <legend>map layers</legend>
+    <label class="inline"><input type="checkbox" id="l-slope" checked> slope shading</label>
+    <label class="inline"><input type="checkbox" id="l-contour" checked> contours (2.5 cm)</label>
+    <label class="inline"><input type="checkbox" id="l-arrow" checked> fall lines</label>
+    <label class="inline"><input type="checkbox" id="l-scatter" checked> miss scatter</label>
+    <label class="inline"><input type="checkbox" id="l-hull"> spread (hull)</label>
+    <label class="inline"><input type="checkbox" id="l-hdr" checked> 50/80/95% contours</label>
+  </fieldset>
+</aside>
+
+<section class="map">
+  <div class="mapbar">
+    <span id="pinfo">no pin — click the map</span>
+    <span class="legend">slope
+      <span class="ramp"><i style="background:var(--r0)"></i><i style="background:var(--r1)"></i><i style="background:var(--r2)"></i><i style="background:var(--r3)"></i><i style="background:var(--r4)"></i><i style="background:var(--r5)"></i><i style="background:var(--r6)"></i></span>
+      0–8%+</span>
+  </div>
+  <canvas id="map" width="1200" height="800"></canvas>
+  <div id="warn"></div>
+  <div id="results"></div>
+</section>
+</main>
+
+<script>
+const FT=3.28084, M2IN=39.3701, M2FT2=10.7639;
+const $=id=>document.getElementById(id);
+const cv=$("map"), cx=cv.getContext("2d");
+let INDEX=null, G=null, pin=null, extraBalls=[], RES=null, JOB=null, poller=null;
+let placeMode="pin", clockMode="fall", quality="quick", selCell=null;
+
+const css=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+/* ---- data --------------------------------------------------------------- */
+async function boot(){
+  INDEX=await (await fetch("/api/greens")).json();
+  $("course").textContent=INDEX.course;
+  const sel=$("green");
+  sel.innerHTML=INDEX.greens.map(g=>`<option value="${g.label}">${g.label} · ${g.slope_mean_pct}% mean slope</option>`).join("");
+  sel.addEventListener("change",()=>loadGreen(sel.value));
+  const SKILLS=["tour","scratch","mid","high","hcp30"];
+  $("skills").innerHTML=SKILLS.map(s=>
+    `<label class="inline"><input type="checkbox" name="skill" value="${s}" ${s==="mid"?"checked":""}> ${s}</label>`).join("");
+  await loadGreen(INDEX.greens[0].label);
+}
+
+async function loadGreen(label){
+  G=await (await fetch("/api/green/"+label)).json();
+  pin=null; extraBalls=[]; RES=null; selCell=null;
+  $("results").innerHTML=""; $("warn").innerHTML=""; $("pinfo").textContent="no pin — click the map";
+  const f=[];
+  if(G.meta.needs_review) f.push(`<span class="badge">needs review</span>`);
+  for(const fl of (G.meta.flags||[])) f.push(`<span class="badge">${fl}</span>`);
+  $("green-flags").innerHTML=
+    `<p class="hint">${G.area_m2.toFixed(0)} m² putting surface · LiDAR macro contours only (±5–10 cm)
+     ${f.length?"<br>"+f.join(" "):""}</p>`;
+  draw();
+}
+
+/* ---- geometry ----------------------------------------------------------- */
+let T={s:1,ox:0,oy:0};
+function fit(){
+  const [x0,y0,x1,y1]=G.bounds, pad=16;
+  const s=Math.min((cv.width-2*pad)/(x1-x0),(cv.height-2*pad)/(y1-y0));
+  T={s, ox:(cv.width-(x1-x0)*s)/2 - x0*s, oy:(cv.height-(y1-y0)*s)/2 + y1*s};
+}
+const X=x=>x*T.s+T.ox, Y=y=>T.oy-y*T.s;          // world -> canvas
+const invX=px=>(px-T.ox)/T.s, invY=py=>(T.oy-py)/T.s;
+
+function pathRings(rings){
+  cx.beginPath();
+  for(const r of rings){
+    r.forEach(([x,y],i)=> i?cx.lineTo(X(x),Y(y)):cx.moveTo(X(x),Y(y)));
+    cx.closePath();
+  }
+}
+
+function slopeColor(pct){
+  const steps=[css("--r0"),css("--r1"),css("--r2"),css("--r3"),css("--r4"),css("--r5"),css("--r6")];
+  return steps[Math.max(0,Math.min(6,Math.round(pct/8*6)))];
+}
+
+/* ---- drawing ------------------------------------------------------------ */
+function draw(){
+  if(!G) return;
+  fit();
+  cx.clearRect(0,0,cv.width,cv.height);
+
+  // The modeled terrain runs 12 m past the green (collar buffer). Show it as
+  // context, but the ball is only on the green inside the solid outline.
+  cx.strokeStyle=css("--rule-2"); cx.lineWidth=1; cx.setLineDash([3,4]);
+  pathRings(G.support); cx.stroke(); cx.setLineDash([]);
+
+  cx.save();
+  pathRings(G.outline); cx.clip();      // everything inside the green only
+
+  if($("l-slope").checked){
+    const s=G.slope;
+    for(let iy=0;iy<s.ny;iy++) for(let ix=0;ix<s.nx;ix++){
+      const v=s.v[iy*s.nx+ix];
+      if(v<0) continue;
+      cx.fillStyle=slopeColor(v);
+      const x=s.x0+ix*s.d, y=s.y0+iy*s.d, w=s.d*T.s+1;
+      cx.fillRect(X(x)-w/2,Y(y)-w/2,w,w);
+    }
+  }
+  if($("l-contour").checked){
+    cx.strokeStyle=css("--turf-line"); cx.lineWidth=1;
+    for(const c of G.contours){ pathRings(c.rings); cx.stroke(); }
+  }
+  if($("l-arrow").checked){
+    cx.strokeStyle=css("--ink-3"); cx.lineWidth=1; cx.globalAlpha=.55;
+    const L=0.9*T.s;
+    for(const a of G.arrows){
+      const x=X(a.x), y=Y(a.y), dx=a.dx*L, dy=-a.dy*L;
+      cx.beginPath(); cx.moveTo(x-dx/2,y-dy/2); cx.lineTo(x+dx/2,y+dy/2); cx.stroke();
+      cx.beginPath(); cx.arc(x+dx/2,y+dy/2,1.7,0,7); cx.fillStyle=css("--ink-3"); cx.fill();
+    }
+    cx.globalAlpha=1;
+  }
+  cx.restore();
+  // Misses that ran off the green stop on its edge, so the scatter is drawn
+  // unclipped — a pile of dots on the boundary IS the off-green story.
+  drawDispersion();
+
+  cx.strokeStyle=css("--ink-2"); cx.lineWidth=1.6;
+  pathRings(G.outline); cx.stroke();
+
+  if(RES) for(const b of RES.balls) drawBall(b);
+  else for(const b of extraBalls) drawBall({x:b.x,y:b.y,status:"ok"});
+  if(pin) drawPin();
+}
+
+function drawPin(){
+  const x=X(pin.x), y=Y(pin.y);
+  cx.beginPath(); cx.arc(x,y,5,0,7);
+  cx.fillStyle=css("--card"); cx.fill();
+  cx.strokeStyle=css("--ink"); cx.lineWidth=2; cx.stroke();
+  cx.beginPath(); cx.moveTo(x,y); cx.lineTo(x,y-22);
+  cx.stroke();
+  cx.beginPath(); cx.moveTo(x,y-22); cx.lineTo(x+12,y-18); cx.lineTo(x,y-14); cx.closePath();
+  cx.fillStyle=css("--ink"); cx.fill();
+}
+
+function drawBall(b){
+  const x=X(b.x), y=Y(b.y), off=b.status&&b.status!=="ok";
+  cx.beginPath(); cx.arc(x,y,4.5,0,7);
+  cx.fillStyle=off?"transparent":css("--card");
+  cx.fill();
+  cx.strokeStyle=off?css("--ink-3"):css("--ink");
+  cx.lineWidth=off?1:1.8;
+  if(off) cx.setLineDash([2,2]);
+  cx.stroke(); cx.setLineDash([]);
+  if(b.hour){
+    cx.fillStyle=off?css("--ink-3"):css("--ink-2");
+    cx.font="10px ui-monospace,monospace"; cx.textAlign="center";
+    cx.fillText(b.hour, x, y-8);
+  }
+}
+
+function drawDispersion(){
+  if(!RES||!selCell) return;
+  const d=RES.dispersion.find(d=>d.ball===selCell.ball&&d.skill===selCell.skill);
+  if(!d) return;
+  if($("l-scatter").checked){
+    cx.fillStyle=css("--ink");
+    for(const [x,y] of d.pts){ cx.globalAlpha=.35; cx.beginPath(); cx.arc(X(x),Y(y),2,0,7); cx.fill(); }
+    cx.globalAlpha=1;
+  }
+  if($("l-hdr").checked){
+    const cols=[css("--r5"),css("--r4"),css("--r3")];
+    (d.hdr||[]).forEach((lvl,i)=>{
+      cx.strokeStyle=cols[i]; cx.lineWidth=1.8; cx.setLineDash([6,3]);
+      pathRings(lvl.rings); cx.stroke(); cx.setLineDash([]);
+    });
+  }
+  if($("l-hull").checked&&d.hull.length>2){
+    cx.strokeStyle=css("--ink-2"); cx.lineWidth=1.3; cx.setLineDash([8,5]);
+    pathRings([d.hull]); cx.stroke(); cx.setLineDash([]);
+  }
+}
+
+/* ---- interaction -------------------------------------------------------- */
+cv.addEventListener("click",e=>{
+  const r=cv.getBoundingClientRect();
+  const px=(e.clientX-r.left)*cv.width/r.width, py=(e.clientY-r.top)*cv.height/r.height;
+  const p={x:+invX(px).toFixed(3), y:+invY(py).toFixed(3)};
+  if(placeMode==="pin"){ pin=p; RES=null; selCell=null; $("results").innerHTML=""; $("warn").innerHTML="";
+    $("pinfo").innerHTML=`pin at <b>${p.x.toFixed(2)}, ${p.y.toFixed(2)}</b> m`;
+  } else { extraBalls.push(p); $("use-ring").checked=false; }
+  draw();
+});
+for(const [id,m] of [["m-pin","pin"],["m-ball","ball"]])
+  $(id).addEventListener("click",()=>{
+    placeMode=m;
+    $("m-pin").setAttribute("aria-pressed",m==="pin"); $("m-ball").setAttribute("aria-pressed",m==="ball");
+    $("place-hint").textContent=m==="pin"?"Click the map to drop the pin.":"Click to add ball positions.";
+  });
+for(const [id,m] of [["c-fall","fall"],["c-compass","compass"]])
+  $(id).addEventListener("click",()=>{
+    clockMode=m;
+    $("c-fall").setAttribute("aria-pressed",m==="fall"); $("c-compass").setAttribute("aria-pressed",m==="compass");
+  });
+for(const [id,q] of [["q-quick","quick"],["q-full","full"]])
+  $(id).addEventListener("click",()=>{
+    quality=q;
+    $("q-quick").setAttribute("aria-pressed",q==="quick"); $("q-full").setAttribute("aria-pressed",q==="full");
+  });
+$("clear-balls").addEventListener("click",()=>{ extraBalls=[]; $("use-ring").checked=true; draw(); });
+for(const id of ["l-slope","l-contour","l-arrow","l-scatter","l-hull","l-hdr"])
+  $(id).addEventListener("change",draw);
+new MutationObserver(draw).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
+
+function parseHours(s){
+  const out=new Set();
+  for(const part of s.split(",")){
+    const m=part.trim().match(/^(\d+)\s*-\s*(\d+)$/);
+    if(m){ for(let i=+m[1];i<=+m[2];i++) out.add(i); }
+    else if(part.trim()) out.add(+part.trim());
+  }
+  return [...out].filter(h=>h>=1&&h<=12).sort((a,b)=>a-b);
+}
+
+/* ---- running ------------------------------------------------------------ */
+$("run").addEventListener("click",async()=>{
+  $("err").textContent="";
+  if(!pin){ $("err").textContent="Drop a pin on the green first."; return; }
+  const skills=[...document.querySelectorAll('input[name=skill]:checked')].map(i=>i.value);
+  if(!skills.length){ $("err").textContent="Pick at least one skill level."; return; }
+  const body={
+    green:G.label, stimp:+$("stimp").value, pin,
+    skills, quality, seed:+$("seed").value,
+  };
+  if($("use-ring").checked||!extraBalls.length)
+    body.ring={dist_ft:+$("ringft").value, hours:parseHours($("hours").value), mode:clockMode};
+  else body.balls=extraBalls;
+
+  $("run").disabled=true; $("prog").hidden=false; $("progtext").textContent="starting…";
+  const r=await fetch("/api/run",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify(body)});
+  const j=await r.json();
+  if(!r.ok){ fail(j.error||"run failed"); return; }
+  JOB=j.job;
+  poller=setInterval(poll,500);
+});
+
+function fail(msg){
+  clearInterval(poller);
+  $("err").textContent=msg; $("run").disabled=false; $("prog").hidden=true; $("progtext").textContent="";
+}
+
+async function poll(){
+  const j=await (await fetch("/api/job/"+JOB)).json();
+  if(j.state==="error"){ fail(j.error); return; }
+  const pct=j.total?Math.round(100*j.done/j.total):0;
+  $("prog").firstElementChild.style.width=pct+"%";
+  $("progtext").textContent=`${j.phase} ${j.total?`${j.done}/${j.total}`:""}`;
+  if(j.state!=="done") return;
+  clearInterval(poller);
+  $("run").disabled=false; $("prog").hidden=true; $("progtext").textContent="";
+  RES=j.result; selCell=RES.cells.length?{ball:RES.cells[0].ball,skill:RES.cells[0].skill}:null;
+  render();
+}
+
+/* ---- results ------------------------------------------------------------ */
+function render(){
+  const warn=[];
+  if(RES.compass_fallback) warn.push("This pin is too flat for a fall line — the clock is using compass bearings.");
+  if(RES.runaway) warn.push(`The pin sits on ${RES.slope_at_pin_pct}% — steeper than the grade at which a ball cannot stop at Stimp ${RES.stimp}. Expect balls to run off the green.`);
+  $("warn").innerHTML=warn.map(w=>`<p class="note">${w}</p>`).join("");
+  $("pinfo").innerHTML=`pin at <b>${RES.pin[0].toFixed(2)}, ${RES.pin[1].toFixed(2)}</b> m ·
+    slope <b>${RES.slope_at_pin_pct}%</b> · uphill bears <b>${RES.fall_azimuth_deg}°</b>`;
+
+  const byBall={};
+  for(const b of RES.balls) byBall[b.idx]=b;
+  const rows=RES.cells.map(c=>{
+    const b=byBall[c.ball], sel=selCell&&selCell.ball===c.ball&&selCell.skill===c.skill;
+    const d=RES.dispersion.find(d=>d.ball===c.ball&&d.skill===c.skill);
+    const spread=d&&d.hullA?`${(d.hullA*M2FT2).toFixed(0)} ft²`:"—";
+    return `<tr class="${sel?"sel":""}" data-ball="${c.ball}" data-skill="${c.skill}">
+      <td>${b.hour?b.hour+" o'clock":`(${b.x.toFixed(1)}, ${b.y.toFixed(1)})`}</td>
+      <td>${c.skill}</td><td>${b.dist_ft.toFixed(0)} ft</td>
+      <td>${c.rollout_in<0.5?"die":c.rollout_in+" in"}</td>
+      <td>${c.make.toFixed(1)}%</td><td>${c.three_plus.toFixed(1)}%</td>
+      <td>${c.e_strokes.toFixed(3)}</td><td>${c.off_green?c.off_green.toFixed(1)+"%":"—"}</td>
+      <td>${spread}</td></tr>`;
+  });
+  const skipped=RES.balls.filter(b=>b.status!=="ok").map(b=>
+    `<tr class="skip"><td>${b.hour?b.hour+" o'clock":`(${b.x.toFixed(1)}, ${b.y.toFixed(1)})`}</td>
+     <td colspan="8">${b.status.replace(/_/g," ")}</td></tr>`);
+
+  $("results").innerHTML=`
+    <table>
+      <thead><tr><th>position</th><th>skill</th><th>dist</th><th>best pace</th><th>make</th>
+        <th>3-putt</th><th>E[putts]</th><th>off green</th><th>spread</th></tr></thead>
+      <tbody>${rows.join("")}${skipped.join("")}</tbody>
+    </table>
+    <p class="hint">Click a row to draw that putt's miss dispersion on the green.
+      Best pace minimizes expected putts; it is conditional on the 0.25 m follow-up lag policy,
+      and the direction-error model is calibrated on flat greens (see the project caveats).</p>
+    <div class="repro">seed ${RES.seed||$("seed").value} · ${RES.trials.toLocaleString()} trials/cell<br>${RES.reproduce}</div>
+    <p class="hint"><a href="/api/job/${JOB}/export.csv" download>download CSV</a> ·
+      <a href="/api/job/${JOB}/manifest.yaml" download>manifest</a></p>`;
+
+  for(const tr of document.querySelectorAll("tbody tr[data-ball]"))
+    tr.addEventListener("click",()=>{
+      selCell={ball:+tr.dataset.ball,skill:tr.dataset.skill};
+      render(); draw();
+    });
+  draw();
+}
+
+boot();
+</script>
+</body>
+</html>

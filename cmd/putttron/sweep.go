@@ -59,37 +59,56 @@ type sweepRow struct {
 }
 
 // pairGroup fills dEBest/dEPairSE for one CRN group (rows sharing everything
-// but rollout) from the per-trial stroke vectors, then drops the vectors.
+// but rollout).
 func pairGroup(g []*sweepRow) {
-	best := -1
+	group := make([]*sim.CellResult, len(g))
 	for i, r := range g {
-		if r.res.SolveOK && (best < 0 || r.res.EStrokes < g[best].res.EStrokes) {
+		group[i] = &r.res
+	}
+	dE, dSE := pairDeltas(group)
+	for i, r := range g {
+		r.dEBest, r.dEPairSE = dE[i], dSE[i]
+	}
+}
+
+// pairDeltas differences each result's per-trial strokes against the group's
+// best under common random numbers — trial t is the same error draw in every
+// member — and returns the paired ΔE and its SE. That SE, not the marginal
+// per-cell one, is what says whether a pace is distinguishable from the best:
+// CRN correlates the estimates, so the marginal SE overstates the band. The
+// per-trial vectors are released once differenced.
+func pairDeltas(group []*sim.CellResult) (dE, dSE []float64) {
+	dE = make([]float64, len(group))
+	dSE = make([]float64, len(group))
+	best := -1
+	for i, r := range group {
+		if r.SolveOK && len(r.Strokes) > 0 && (best < 0 || r.EStrokes < group[best].EStrokes) {
 			best = i
 		}
 	}
 	if best < 0 {
-		return
+		return dE, dSE
 	}
-	ref := g[best].res.Strokes
-	for _, r := range g {
-		if !r.res.SolveOK || len(r.res.Strokes) != len(ref) {
+	ref := group[best].Strokes
+	for i, r := range group {
+		if !r.SolveOK || len(r.Strokes) != len(ref) {
 			continue
 		}
 		var sum, sumSq float64
-		for t, s := range r.res.Strokes {
+		for t, s := range r.Strokes {
 			d := s - ref[t]
 			sum += d
 			sumSq += d * d
 		}
 		nf := float64(len(ref))
 		mean := sum / nf
-		r.dEBest = mean
-		varD := sumSq/nf - mean*mean
-		r.dEPairSE = math.Sqrt(math.Max(varD, 0) / nf)
+		dE[i] = mean
+		dSE[i] = math.Sqrt(math.Max(sumSq/nf-mean*mean, 0) / nf)
 	}
-	for _, r := range g {
-		r.res.Strokes = nil
+	for _, r := range group {
+		r.Strokes = nil
 	}
+	return dE, dSE
 }
 
 func cmdSweep(args []string) {

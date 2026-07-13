@@ -1,6 +1,11 @@
 // Package coursetest builds synthetic greens-repository directories
 // (index.json + heightmap.npz + meta.json) so course loading and everything
 // downstream can be tested without the real LiDAR data.
+//
+// Fixtures mirror the real pipeline's contract: the gridded surface is the
+// putting green DILATED by a collar buffer, and the loader erodes that back
+// off. A fixture green of radius r therefore writes a support disc of radius
+// r + collar.
 package coursetest
 
 import (
@@ -13,16 +18,20 @@ import (
 	"github.com/jhoblitt/putttron/internal/npz/npztest"
 )
 
-// Spec describes one synthetic green. Z gives the LOCAL-frame elevation at
-// node (i, j) (row 0 = north edge); NaN marks a node off-green (nil = all
-// valid). Build re-adds UTM-like offsets so loader recentering is exercised.
+// CollarM is the buffer the real pipeline adds around each green polygon
+// before gridding (green_maps: "collar/surrounds provide sim boundary and
+// fitting support").
+const CollarM = 12.0
+
+// Spec describes one synthetic green. Z gives the local-frame elevation in
+// meters at a point; the putting surface is a disc of GreenRadiusM about the
+// origin, and the modeled grid extends CollarM beyond it.
 type Spec struct {
 	Label                string
 	Hole                 int
-	Rows, Cols           int
-	CellSize             float64 // 0 -> 0.25
-	Z                    func(i, j int) float64
-	NaN                  func(i, j int) bool
+	GreenRadiusM         float64 // default 9 m (a ~250 m² green)
+	CellSize             float64 // default 0.25
+	Z                    func(x, y float64) float64
 	Flags                []string
 	NeedsReview          bool
 	SlopeMaxSustainedPct float64
@@ -66,36 +75,46 @@ func Build(dir string, specs []Spec) error {
 		if dxm == 0 {
 			dxm = 0.25
 		}
+		greenR := sp.GreenRadiusM
+		if greenR == 0 {
+			greenR = 9
+		}
+		support := greenR + CollarM
+		half := support + dxm // one cell of always-invalid border
+		n := 2*int(math.Ceil(half/dxm)) + 1
+
 		gdir := filepath.Join(greensDir, sp.Label)
 		if err := os.MkdirAll(gdir, 0o755); err != nil {
 			return err
 		}
 
-		// Local origin: pick the grid center-ish, offset per green so
-		// labels do not collide in UTM space.
+		// Local origin sits at the grid center; the file stores UTM, so the
+		// loader has to recenter to get back to (0, 0).
 		off := float64(gi) * 100
-		lox := utmX0 + off + float64(sp.Cols)/2*dxm
-		loy := utmY0 + off - float64(sp.Rows)/2*dxm
 		x0 := utmX0 + off
 		y0 := utmY0 + off
+		lox := x0 + float64(n-1)/2*dxm
+		loy := y0 - float64(n-1)/2*dxm
 
-		z := make([]float32, sp.Rows*sp.Cols)
-		for i := 0; i < sp.Rows; i++ {
-			for j := 0; j < sp.Cols; j++ {
-				if sp.NaN != nil && sp.NaN(i, j) {
-					z[i*sp.Cols+j] = float32(math.NaN())
+		z := make([]float32, n*n)
+		for i := 0; i < n; i++ {
+			for j := 0; j < n; j++ {
+				x := float64(j)*dxm - float64(n-1)/2*dxm
+				y := float64(n-1)/2*dxm - float64(i)*dxm
+				if math.Hypot(x, y) > support {
+					z[i*n+j] = float32(math.NaN())
 					continue
 				}
 				local := 0.0
 				if sp.Z != nil {
-					local = sp.Z(i, j)
+					local = sp.Z(x, y)
 				}
-				z[i*sp.Cols+j] = float32(local + utmZ0)
+				z[i*n+j] = float32(local + utmZ0)
 			}
 		}
 
 		members := map[string]npztest.Member{
-			"z":            {Shape: []int{sp.Rows, sp.Cols}, F32: z},
+			"z":            {Shape: []int{n, n}, F32: z},
 			"x0":           {Shape: []int{}, F64: []float64{x0}},
 			"y0":           {Shape: []int{}, F64: []float64{y0}},
 			"dx":           {Shape: []int{}, F64: []float64{dxm}},
@@ -113,6 +132,7 @@ func Build(dir string, specs []Spec) error {
 			"needs_review":            sp.NeedsReview,
 			"flags":                   sp.Flags,
 			"slope_max_sustained_pct": sp.SlopeMaxSustainedPct,
+			"green_area_m2":           math.Pi * greenR * greenR,
 			"fit_rms_m":               0.03,
 			"vertical_fidelity":       "synthetic",
 		}
@@ -131,7 +151,7 @@ func Build(dir string, specs []Spec) error {
 		ig.Artifacts.HeightmapNPZ = ig.Dir + "/heightmap.npz"
 		ig.Artifacts.MetaJSON = ig.Dir + "/meta.json"
 		ig.LocalOriginUTM = []float64{lox, loy, utmZ0}
-		ig.GridShape = []int{sp.Rows, sp.Cols}
+		ig.GridShape = []int{n, n}
 		ig.Flags = sp.Flags
 		ig.NeedsReview = sp.NeedsReview
 		idxGreens = append(idxGreens, ig)
@@ -145,17 +165,30 @@ func Build(dir string, specs []Spec) error {
 	return os.WriteFile(filepath.Join(greensDir, "index.json"), b, 0o644)
 }
 
-// PlaneSpec is a convenience: a fully-valid tilted plane in the local frame,
-// slopePct% grade falling toward +X (east), matching green.NewPlanar's
-// convention.
-func PlaneSpec(label string, rows, cols int, slopePct float64) Spec {
+// PlaneSpec is a tilted plane falling slopePct% toward +X, matching
+// green.NewPlanar's convention.
+func PlaneSpec(label string, greenRadiusM, slopePct float64) Spec {
 	return Spec{
-		Label: label, Hole: 1, Rows: rows, Cols: cols,
-		Z: func(i, j int) float64 {
-			// Local x of node (i, j) given Build's origin layout.
-			dxm := 0.25
-			x := float64(j)*dxm - float64(cols)/2*dxm
-			return -slopePct / 100 * x
+		Label: label, Hole: 1, GreenRadiusM: greenRadiusM,
+		Z: func(x, y float64) float64 { return -slopePct / 100 * x },
+	}
+}
+
+// SteepSpec is a green with a face too steep to hold a ball at normal green
+// speeds — the ball runs off. Real courses have these (crooked_tree flags
+// several); the simulator must handle them without hanging.
+func SteepSpec(label string, greenRadiusM float64) Spec {
+	return Spec{
+		Label: label, Hole: 2, GreenRadiusM: greenRadiusM,
+		Z: func(x, y float64) float64 {
+			// Gentle on the west half, a 12% ramp falling east.
+			if x < 0 {
+				return -0.01 * x
+			}
+			return -0.12 * x
 		},
+		Flags:                []string{"max_sustained_12.0%_gt_8%"},
+		NeedsReview:          true,
+		SlopeMaxSustainedPct: 12,
 	}
 }
