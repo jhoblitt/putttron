@@ -110,6 +110,24 @@ func TestRoundTripF4NaN(t *testing.T) {
 	}
 }
 
+func TestRoundTripU8(t *testing.T) {
+	// The pin-zone tier grid: 0/1/2/3 legal tiers, 255 off-green.
+	vals := []uint8{0, 1, 2, 3, 255, 0}
+	arrays := writeRead(t, map[string]npztest.Member{"tier_class": {Shape: []int{2, 3}, U8: vals}}, false)
+	tc, ok := arrays["tier_class"]
+	if !ok {
+		t.Fatalf("tier_class missing; keys %v", slices.Sorted(maps.Keys(arrays)))
+	}
+	if !slices.Equal(tc.Shape, []int{2, 3}) {
+		t.Fatalf("shape = %v, want [2 3]", tc.Shape)
+	}
+	for i, want := range vals {
+		if tc.Data[i] != float64(want) {
+			t.Errorf("Data[%d] = %v, want %d", i, tc.Data[i], want)
+		}
+	}
+}
+
 func TestRoundTripScalarsAndVector(t *testing.T) {
 	origin := []float64{494443.2850257461, 3581398.905609859, 715.3603515625}
 	arrays := writeRead(t, map[string]npztest.Member{

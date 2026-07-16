@@ -1,7 +1,8 @@
 // Package npz reads NumPy .npz archives — zip files whose members are .npy
 // arrays — covering the subset the green_maps LiDAR pipeline emits:
-// little-endian '<f4'/'<f8' numerics and scalar '<U…' unicode strings.
-// Format reference: numpy.lib.format (npy versions 1.0–3.0).
+// little-endian '<f4'/'<f8' numerics, single-byte '|u1'/'|i1' integers (the
+// pin-zone tier grid), and scalar '<U…' unicode strings. Format reference:
+// numpy.lib.format (npy versions 1.0–3.0).
 package npz
 
 import (
@@ -18,9 +19,10 @@ import (
 	"strings"
 )
 
-// Array is one .npy member. Numeric dtypes ('<f4', '<f8') are widened to
-// float64 in Data; unicode scalars ('<U…') are decoded into Str with Data
-// nil. Shape is the numpy shape (empty for scalars; Data then has length 1).
+// Array is one .npy member. Numeric dtypes ('<f4', '<f8', '|u1', '|i1') are
+// widened to float64 in Data; unicode scalars ('<U…') are decoded into Str
+// with Data nil. Shape is the numpy shape (empty for scalars; Data then has
+// length 1).
 type Array struct {
 	Shape []int
 	Data  []float64
@@ -128,6 +130,21 @@ func parseNPY(b []byte) (Array, error) {
 	}
 
 	switch descr {
+	case "|u1", "|i1":
+		// Single-byte integers carry no endianness (hence the '|'). The pin-
+		// zone tier grid is |u1.
+		if err := checkPayload(payload, 1, count, descr, shape); err != nil {
+			return Array{}, err
+		}
+		data := make([]float64, count)
+		for i := range data {
+			if descr == "|i1" {
+				data[i] = float64(int8(payload[i]))
+			} else {
+				data[i] = float64(payload[i])
+			}
+		}
+		return Array{Shape: shape, Data: data}, nil
 	case "<f4":
 		if err := checkPayload(payload, 4, count, descr, shape); err != nil {
 			return Array{}, err

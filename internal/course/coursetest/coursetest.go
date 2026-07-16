@@ -56,12 +56,16 @@ func Build(dir string, specs []Spec) error {
 		Dir       string `json:"dir"`
 		Artifacts struct {
 			HeightmapNPZ string `json:"heightmap_npz"`
+			PinZonesNPZ  string `json:"pin_zones_npz"`
 			MetaJSON     string `json:"meta_json"`
 		} `json:"artifacts"`
-		LocalOriginUTM []float64 `json:"local_origin_utm"`
-		GridShape      []int     `json:"grid_shape"`
-		Flags          []string  `json:"flags"`
-		NeedsReview    bool      `json:"needs_review"`
+		LocalOriginUTM   []float64 `json:"local_origin_utm"`
+		GridShape        []int     `json:"grid_shape"`
+		LegalPinAreaM2   float64   `json:"legal_pin_area_m2"`
+		LegalPinFraction float64   `json:"legal_pin_fraction"`
+		ScarceLegalArea  bool      `json:"scarce_legal_area"`
+		Flags            []string  `json:"flags"`
+		NeedsReview      bool      `json:"needs_review"`
 	}
 	index := map[string]any{
 		"course":         "coursetest synthetic",
@@ -126,15 +130,65 @@ func Build(dir string, specs []Spec) error {
 			return err
 		}
 
+		tier := pinTiers(z, n, dxm, greenR)
+		cell := dxm * dxm
+		var legal, premium, standard, traditional int
+		for _, t := range tier {
+			switch t {
+			case 3:
+				premium++
+				standard++
+				traditional++
+			case 2:
+				standard++
+				traditional++
+			case 1:
+				traditional++
+			}
+		}
+		legal = standard // headline tier
+		greenArea := math.Pi * greenR * greenR
+		pinMembers := map[string]npztest.Member{
+			"tier_class":   {Shape: []int{n, n}, U8: tier},
+			"x0":           {Shape: []int{}, F64: []float64{x0}},
+			"y0":           {Shape: []int{}, F64: []float64{y0}},
+			"dx":           {Shape: []int{}, F64: []float64{dxm}},
+			"local_origin": {Shape: []int{3}, F64: []float64{lox, loy, utmZ0}},
+			"classes":      {Str: "0=on-green illegal; 1=traditional ≤3%; 2=standard ≤2%; 3=premium ≤1.5%; 255=off-green"},
+			"layout":       {Str: "row-major north-up, same grid as heightmap.npz"},
+		}
+		if err := npztest.Write(filepath.Join(gdir, "pin_zones.npz"), pinMembers, false); err != nil {
+			return err
+		}
+
+		legalArea := float64(legal) * cell
+		legalFrac := legalArea / greenArea
+		scarce := legalArea < 10
+		pinMeta := map[string]any{
+			"definition":         "synthetic legal pin map",
+			"edge_setback_m":     pinSetbackM,
+			"cup_bench_radius_m": 0.5,
+			"headline_tier":      "standard",
+			"legal_area_m2":      legalArea,
+			"legal_fraction":     legalFrac,
+			"scarce_legal_area":  scarce,
+			"tiers": map[string]any{
+				"traditional": map[string]any{"slope_max_pct": 3.0, "area_m2": float64(traditional) * cell, "fraction_of_green": float64(traditional) * cell / greenArea, "n_zones": 1},
+				"standard":    map[string]any{"slope_max_pct": 2.0, "area_m2": float64(standard) * cell, "fraction_of_green": float64(standard) * cell / greenArea, "n_zones": 1},
+				"premium":     map[string]any{"slope_max_pct": 1.5, "area_m2": float64(premium) * cell, "fraction_of_green": float64(premium) * cell / greenArea, "n_zones": 1},
+			},
+		}
+
 		meta := map[string]any{
 			"label":                   sp.Label,
 			"hole":                    sp.Hole,
 			"needs_review":            sp.NeedsReview,
 			"flags":                   sp.Flags,
 			"slope_max_sustained_pct": sp.SlopeMaxSustainedPct,
-			"green_area_m2":           math.Pi * greenR * greenR,
+			"green_area_m2":           greenArea,
 			"fit_rms_m":               0.03,
 			"vertical_fidelity":       "synthetic",
+			"pin_zones":               pinMeta,
 		}
 		mb, err := json.MarshalIndent(meta, "", " ")
 		if err != nil {
@@ -149,9 +203,13 @@ func Build(dir string, specs []Spec) error {
 		ig.Hole = sp.Hole
 		ig.Dir = fmt.Sprintf("outputs/greens/%s", sp.Label)
 		ig.Artifacts.HeightmapNPZ = ig.Dir + "/heightmap.npz"
+		ig.Artifacts.PinZonesNPZ = ig.Dir + "/pin_zones.npz"
 		ig.Artifacts.MetaJSON = ig.Dir + "/meta.json"
 		ig.LocalOriginUTM = []float64{lox, loy, utmZ0}
 		ig.GridShape = []int{n, n}
+		ig.LegalPinAreaM2 = legalArea
+		ig.LegalPinFraction = legalFrac
+		ig.ScarceLegalArea = scarce
 		ig.Flags = sp.Flags
 		ig.NeedsReview = sp.NeedsReview
 		idxGreens = append(idxGreens, ig)
@@ -163,6 +221,53 @@ func Build(dir string, specs []Spec) error {
 		return err
 	}
 	return os.WriteFile(filepath.Join(greensDir, "index.json"), b, 0o644)
+}
+
+// pinSetbackM is the edge setback the fixture applies, matching green_maps.
+const pinSetbackM = 3.0
+
+// pinTiers derives a legal-pin tier grid from a sampled heightmap, mirroring
+// green_maps Stage 4.5: a cell is off-green (255) beyond the green radius, on-
+// green-illegal (0) within the setback or over 3% slope, and otherwise the
+// tightest tier its finite-difference slope qualifies for. The pipeline's
+// morphological cup-bench erosion is omitted — the synthetic surfaces are
+// smooth enough that per-cell slope is representative.
+func pinTiers(z []float32, n int, dxm, greenR float64) []uint8 {
+	tier := make([]uint8, n*n)
+	half := float64(n-1) / 2 * dxm
+	at := func(i, j int) float64 { return float64(z[i*n+j]) }
+	for i := 0; i < n; i++ {
+		for j := 0; j < n; j++ {
+			x := float64(j)*dxm - half
+			y := half - float64(i)*dxm
+			r := math.Hypot(x, y)
+			switch {
+			case r > greenR:
+				tier[i*n+j] = 255
+				continue
+			case r > greenR-pinSetbackM:
+				tier[i*n+j] = 0
+				continue
+			}
+			// Central differences; on-green cells are ≥ setback from the edge
+			// and the modeled surface extends a collar past that, so all four
+			// neighbors are finite.
+			dzdx := (at(i, j+1) - at(i, j-1)) / (2 * dxm)
+			dzdy := (at(i-1, j) - at(i+1, j)) / (2 * dxm)
+			slopePct := 100 * math.Hypot(dzdx, dzdy)
+			switch {
+			case slopePct <= 1.5:
+				tier[i*n+j] = 3
+			case slopePct <= 2.0:
+				tier[i*n+j] = 2
+			case slopePct <= 3.0:
+				tier[i*n+j] = 1
+			default:
+				tier[i*n+j] = 0
+			}
+		}
+	}
+	return tier
 }
 
 // PlaneSpec is a tilted plane falling slopePct% toward +X, matching

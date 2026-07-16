@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jhoblitt/putttron/internal/course"
+	"github.com/jhoblitt/putttron/internal/course/coursetest"
 	"github.com/jhoblitt/putttron/internal/physics"
 )
 
@@ -115,6 +116,80 @@ func TestServeGreensAndGreen(t *testing.T) {
 	}
 }
 
+// The green map must carry the legal pin-zone overlay: nested tier regions
+// for a fair green, and a clear "scarce" signal (no tiers) for one too steep.
+func TestServePinZones(t *testing.T) {
+	dir := t.TempDir()
+	if err := coursetest.Build(dir, []coursetest.Spec{
+		coursetest.PlaneSpec("hole_01", 9, 1), // 1% — legal, premium interior
+		coursetest.PlaneSpec("hole_02", 9, 5), // 5% — no fair pin anywhere
+	}); err != nil {
+		t.Fatal(err)
+	}
+	idx, err := course.LoadIndex(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts := httptest.NewServer(newServer(dir, idx).routes())
+	t.Cleanup(ts.Close)
+
+	type tier struct {
+		Tier   int            `json:"tier"`
+		Name   string         `json:"name"`
+		AreaM2 float64        `json:"area_m2"`
+		Rings  [][][2]float64 `json:"rings"`
+	}
+	type resp struct {
+		Bounds [4]float64 `json:"bounds"`
+		Pins   *struct {
+			SetbackM float64 `json:"setback_m"`
+			Headline string  `json:"headline_tier"`
+			LegalM2  float64 `json:"legal_area_m2"`
+			Scarce   bool    `json:"scarce"`
+			Tiers    []tier  `json:"tiers"`
+		} `json:"pins"`
+	}
+
+	var fair resp
+	getJSON(t, ts, "/api/green/hole_01", &fair)
+	if fair.Pins == nil {
+		t.Fatal("a green with legal zones has no pins block")
+	}
+	if fair.Pins.Scarce || fair.Pins.LegalM2 <= 0 || fair.Pins.SetbackM != 3 {
+		t.Errorf("hole_01 pins: %+v, want a healthy legal area with a 3 m setback", *fair.Pins)
+	}
+	if len(fair.Pins.Tiers) == 0 {
+		t.Fatal("no tier regions returned for a fair green")
+	}
+	// Outermost tier first, areas non-increasing (premium ⊂ standard ⊂ traditional).
+	for i, tr := range fair.Pins.Tiers {
+		if len(tr.Rings) == 0 || len(tr.Rings[0]) < 3 {
+			t.Errorf("tier %s has no drawable ring", tr.Name)
+		}
+		if i > 0 && tr.AreaM2 > fair.Pins.Tiers[i-1].AreaM2+1e-6 {
+			t.Errorf("tier %s area %.1f exceeds the looser tier's %.1f", tr.Name, tr.AreaM2, fair.Pins.Tiers[i-1].AreaM2)
+		}
+		// Rings must sit inside the green's bounds.
+		for _, r := range tr.Rings {
+			for _, p := range r {
+				if p[0] < fair.Bounds[0]-0.5 || p[0] > fair.Bounds[2]+0.5 ||
+					p[1] < fair.Bounds[1]-0.5 || p[1] > fair.Bounds[3]+0.5 {
+					t.Errorf("tier %s ring vertex %v is outside the green bounds %v", tr.Name, p, fair.Bounds)
+				}
+			}
+		}
+	}
+
+	var steep resp
+	getJSON(t, ts, "/api/green/hole_02", &steep)
+	if steep.Pins == nil || !steep.Pins.Scarce {
+		t.Errorf("a 5%% green should report scarce pins: %+v", steep.Pins)
+	}
+	if len(steep.Pins.Tiers) != 0 || steep.Pins.LegalM2 != 0 {
+		t.Errorf("a scarce green should carry no tier regions and 0 legal area: %+v", *steep.Pins)
+	}
+}
+
 func ringRadius(ring [][2]float64) float64 {
 	var maxR float64
 	for _, p := range ring {
@@ -156,6 +231,10 @@ func TestServeRunLifecycle(t *testing.T) {
 	res, _ := job["result"].(map[string]any)
 	if res == nil {
 		t.Fatal("finished job carries no result")
+	}
+	// The run reports the pin's legal-pin tier, authoritatively (server-side).
+	if name, _ := res["pin_tier_name"].(string); name == "" {
+		t.Error("the run result does not report the pin's legal-pin tier")
 	}
 	cells, _ := res["cells"].([]any)
 	if len(cells) != 2 {

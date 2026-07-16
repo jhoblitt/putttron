@@ -53,27 +53,52 @@ type GreenInfo struct {
 	Dir       string `json:"dir"`
 	Artifacts struct {
 		HeightmapNPZ string `json:"heightmap_npz"`
+		PinZonesNPZ  string `json:"pin_zones_npz"`
 		MetaJSON     string `json:"meta_json"`
 	} `json:"artifacts"`
-	LocalOriginUTM  [3]float64 `json:"local_origin_utm"`
-	GridShape       [2]int     `json:"grid_shape"`
-	SlopeMeanPct    float64    `json:"slope_mean_pct"`
-	ElevationRangeM float64    `json:"elevation_range_m"`
-	FitRMSM         float64    `json:"fit_rms_m"`
-	Flags           []string   `json:"flags"`
-	NeedsReview     bool       `json:"needs_review"`
+	LocalOriginUTM   [3]float64 `json:"local_origin_utm"`
+	GridShape        [2]int     `json:"grid_shape"`
+	SlopeMeanPct     float64    `json:"slope_mean_pct"`
+	ElevationRangeM  float64    `json:"elevation_range_m"`
+	FitRMSM          float64    `json:"fit_rms_m"`
+	LegalPinAreaM2   float64    `json:"legal_pin_area_m2"`
+	LegalPinFraction float64    `json:"legal_pin_fraction"`
+	ScarceLegalArea  bool       `json:"scarce_legal_area"`
+	Flags            []string   `json:"flags"`
+	NeedsReview      bool       `json:"needs_review"`
 }
 
 type Meta struct {
-	SlopeMeanPct           float64  `json:"slope_mean_pct"`
-	SlopeMaxPct            float64  `json:"slope_max_pct"`
-	SlopeMaxSustainedPct   float64  `json:"slope_max_sustained_pct"`
-	FitRMSM                float64  `json:"fit_rms_m"`
-	ElevationRangeOnGreenM float64  `json:"elevation_range_on_green_m"`
-	GreenAreaM2            float64  `json:"green_area_m2"`
-	Flags                  []string `json:"flags"`
-	NeedsReview            bool     `json:"needs_review"`
-	VerticalFidelity       string   `json:"vertical_fidelity"`
+	SlopeMeanPct           float64     `json:"slope_mean_pct"`
+	SlopeMaxPct            float64     `json:"slope_max_pct"`
+	SlopeMaxSustainedPct   float64     `json:"slope_max_sustained_pct"`
+	FitRMSM                float64     `json:"fit_rms_m"`
+	ElevationRangeOnGreenM float64     `json:"elevation_range_on_green_m"`
+	GreenAreaM2            float64     `json:"green_area_m2"`
+	PinZones               PinZoneMeta `json:"pin_zones"`
+	Flags                  []string    `json:"flags"`
+	NeedsReview            bool        `json:"needs_review"`
+	VerticalFidelity       string      `json:"vertical_fidelity"`
+}
+
+// PinZoneMeta is the meta.json summary of a green's legal hole-location map
+// (green_maps Stage 4.5).
+type PinZoneMeta struct {
+	Definition      string                 `json:"definition"`
+	EdgeSetbackM    float64                `json:"edge_setback_m"`
+	CupBenchRadiusM float64                `json:"cup_bench_radius_m"`
+	HeadlineTier    string                 `json:"headline_tier"`
+	LegalAreaM2     float64                `json:"legal_area_m2"`
+	LegalFraction   float64                `json:"legal_fraction"`
+	ScarceLegalArea bool                   `json:"scarce_legal_area"`
+	Tiers           map[string]PinTierMeta `json:"tiers"`
+}
+
+type PinTierMeta struct {
+	SlopeMaxPct     float64 `json:"slope_max_pct"`
+	AreaM2          float64 `json:"area_m2"`
+	FractionOfGreen float64 `json:"fraction_of_green"`
+	NZones          int     `json:"n_zones"`
 }
 
 // Green is one loaded green: its surface in the local frame (origin at the
@@ -82,7 +107,8 @@ type Green struct {
 	Info        GreenInfo
 	Meta        Meta
 	Surf        *green.Heightmap
-	GreenAreaM2 float64 // putting surface recovered from the buffered grid
+	Pins        *PinZones // legal hole-location tiers; nil if the green has none
+	GreenAreaM2 float64   // putting surface recovered from the buffered grid
 	NPZPath     string
 	NPZSize     int64
 	NPZSHA256   string
@@ -209,6 +235,17 @@ func LoadGreen(idx *Index, label string, decel float64) (*Green, error) {
 			fmt.Fprintf(os.Stderr,
 				"warning: %s: eroding the %g m collar gives a %.0f m² putting surface but the pipeline reports %.0f m² (%.0f%% off) — has the upstream buffer changed?\n",
 				label, CollarBufferM, g.GreenAreaM2, want, 100*off)
+		}
+	}
+
+	if p := info.Artifacts.PinZonesNPZ; p != "" {
+		pins, err := loadPinZones(filepath.Join(idx.Dir, filepath.FromSlash(p)), x0, y0, dx, lo.Data, rows, cols)
+		if err != nil {
+			// A green without usable pin zones is still usable for putting.
+			fmt.Fprintf(os.Stderr, "warning: %s: %v (continuing without pin zones)\n", label, err)
+		} else {
+			pins.Meta = g.Meta.PinZones
+			g.Pins = pins
 		}
 	}
 	return g, nil

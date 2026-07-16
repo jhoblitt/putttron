@@ -51,12 +51,14 @@ go run ./cmd/putttron serve        # interactive explorer at http://127.0.0.1:78
 go run ./cmd/putttron greensweep -green hole_07 -pin "0,0" -ringft 20   # headless equivalent
 ```
 
-`serve` renders the green (slope shading, 2.5 cm contours, fall lines), lets
-you click a pin and ball positions — or take the defaults: a ring at a chosen
-distance with a clock face of positions, where 12 o'clock sits directly
-upslope of the pin — then reports each position's optimal pace, make%, 3-putt%,
-off-green%, and draws the miss dispersion on the green itself. Every run shows
-its seed and hands back the `greensweep` command that reproduces it. Committed
-examples are in `results/greens/`.
+`serve` renders the green (slope shading, 2.5 cm contours, fall lines, and the
+pre-computed **legal pin-zone** map — where the USGA-guided fair hole locations
+are), lets you click a pin and ball positions — or take the defaults: a ring at
+a chosen distance with a clock face of positions, where 12 o'clock sits
+directly upslope of the pin — then reports each position's optimal pace, make%,
+3-putt%, off-green%, and draws the miss dispersion on the green itself. Dropping
+a pin tells you which legal tier (premium / standard / marginal) it falls in.
+Every run shows its seed and hands back the `greensweep` command that
+reproduces it. Committed examples are in `results/greens/`.
 
 Results land in `results/`.

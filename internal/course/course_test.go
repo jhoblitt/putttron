@@ -144,6 +144,94 @@ func TestLoadGreenRejectsForeignLayout(t *testing.T) {
 	}
 }
 
+func TestLoadGreenPinZones(t *testing.T) {
+	// A gentle 1% plane sits clearly inside the premium band (≤1.5%), well off
+	// any tier boundary, so float32 quantization can't tip the tier.
+	dir := t.TempDir()
+	if err := coursetest.Build(dir, []coursetest.Spec{coursetest.PlaneSpec("hole_01", 9, 1)}); err != nil {
+		t.Fatal(err)
+	}
+	idx, err := LoadIndex(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := LoadGreen(idx, "hole_01", 0.55)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g.Pins == nil {
+		t.Fatal("hole_01 has a pin_zones artifact but Pins is nil")
+	}
+
+	// The tier grid must be registered to the same grid as the surface, so a
+	// tier lookup lands on the cell under the ball.
+	sr, sc := g.Surf.GridSize()
+	pr, pc := g.Pins.GridSize()
+	if pr != sr || pc != sc {
+		t.Errorf("tier grid %dx%d != surface grid %dx%d", pr, pc, sr, sc)
+	}
+	sx, sy := g.Surf.Origin()
+	px, py := g.Pins.Origin()
+	if math.Abs(px-sx) > 1e-9 || math.Abs(py-sy) > 1e-9 || g.Pins.CellSize() != g.Surf.CellSize() {
+		t.Errorf("tier grid origin (%.4f,%.4f,%.4f) != surface (%.4f,%.4f,%.4f)",
+			px, py, g.Pins.CellSize(), sx, sy, g.Surf.CellSize())
+	}
+
+	// The interior (past the 3 m setback) is premium, so the center is a
+	// legal pin, and premium counts as standard-legal too.
+	if got := g.Pins.TierAt(0, 0); got != TierPremium {
+		t.Errorf("center tier = %d (%s), want premium", got, TierName(got))
+	}
+	if got := g.Pins.TierAt(100, 0); got != TierOffGreen {
+		t.Errorf("a point 100 m out is tier %d, want off-green", got)
+	}
+	// A point inside the 3 m edge setback is on the green but not a legal pin.
+	if got := g.Pins.TierAt(8.5, 0); got != TierIllegal {
+		t.Errorf("a point in the edge setback is tier %d (%s), want illegal", got, TierName(got))
+	}
+
+	// The index summary and the meta block must agree with the grid.
+	if g.Info.LegalPinAreaM2 <= 0 || g.Info.ScarceLegalArea {
+		t.Errorf("hole_01 summary: legal=%.1f scarce=%v, want a healthy legal area",
+			g.Info.LegalPinAreaM2, g.Info.ScarceLegalArea)
+	}
+	if g.Meta.PinZones.HeadlineTier != "standard" || len(g.Meta.PinZones.Tiers) != 3 {
+		t.Errorf("meta pin_zones not loaded: %+v", g.Meta.PinZones)
+	}
+	if a := g.Meta.PinZones.Tiers["standard"].AreaM2; math.Abs(a-g.Info.LegalPinAreaM2) > 1 {
+		t.Errorf("standard tier area %.1f != index legal area %.1f", a, g.Info.LegalPinAreaM2)
+	}
+}
+
+// A green too steep for any fair pin loads its (empty) tier map and is flagged
+// scarce, rather than failing — hole_13 and hole_18 are genuinely like this.
+func TestLoadGreenScarcePins(t *testing.T) {
+	dir := t.TempDir()
+	if err := coursetest.Build(dir, []coursetest.Spec{
+		coursetest.PlaneSpec("hole_09", 9, 5), // 5% everywhere > 3%
+	}); err != nil {
+		t.Fatal(err)
+	}
+	idx, err := LoadIndex(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	g, err := LoadGreen(idx, "hole_09", 0.55)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if g.Pins == nil {
+		t.Fatal("a scarce green should still load its tier grid")
+	}
+	if !g.Info.ScarceLegalArea || g.Info.LegalPinAreaM2 >= 10 {
+		t.Errorf("a 5%% green should be scarce: legal=%.1f scarce=%v",
+			g.Info.LegalPinAreaM2, g.Info.ScarceLegalArea)
+	}
+	if got := g.Pins.TierAt(0, 0); got != TierIllegal {
+		t.Errorf("center of a 5%% green is tier %d (%s), want illegal", got, TierName(got))
+	}
+}
+
 func TestGitDescribe(t *testing.T) {
 	if got := GitDescribe(t.TempDir()); got != "unknown" {
 		t.Errorf("GitDescribe on a non-repo = %q, want \"unknown\"", got)

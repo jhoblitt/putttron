@@ -14,12 +14,13 @@ import (
 	"strings"
 )
 
-// Member is one array to write. Exactly one of F32, F64, Str should be set
-// (Str implies scalar shape). Shape applies to F32/F64.
+// Member is one array to write. Exactly one of F32, F64, U8, Str should be
+// set (Str implies scalar shape). Shape applies to F32/F64/U8.
 type Member struct {
 	Shape []int
 	F32   []float32
 	F64   []float64
+	U8    []uint8
 	Str   string
 }
 
@@ -63,13 +64,13 @@ func writeZip(f *os.File, members map[string]Member, store bool) error {
 
 func encodeNPY(m Member) ([]byte, error) {
 	set := 0
-	for _, on := range []bool{m.F32 != nil, m.F64 != nil, m.Str != ""} {
+	for _, on := range []bool{m.F32 != nil, m.F64 != nil, m.U8 != nil, m.Str != ""} {
 		if on {
 			set++
 		}
 	}
 	if set != 1 {
-		return nil, fmt.Errorf("exactly one of F32, F64, Str must be set (have %d)", set)
+		return nil, fmt.Errorf("exactly one of F32, F64, U8, Str must be set (have %d)", set)
 	}
 
 	var descr string
@@ -94,6 +95,12 @@ func encodeNPY(m Member) ([]byte, error) {
 		for _, v := range m.F64 {
 			payload = binary.LittleEndian.AppendUint64(payload, math.Float64bits(v))
 		}
+	case m.U8 != nil:
+		if n := elemCount(shape); n != len(m.U8) {
+			return nil, fmt.Errorf("shape %v holds %d elements, U8 has %d", shape, n, len(m.U8))
+		}
+		descr = "|u1"
+		payload = append([]byte(nil), m.U8...)
 	default:
 		runes := []rune(m.Str)
 		descr = "<U" + strconv.Itoa(len(runes))

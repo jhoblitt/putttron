@@ -10,7 +10,7 @@
   --rule:#e2e3da; --rule-2:#cfd1c5;
   --r0:#eef3ef; --r1:#cde2fb; --r2:#9ec5f4; --r3:#5598e7; --r4:#2a78d6; --r5:#1c5cab; --r6:#104281;
   --ink-on-deep:#f5f8fc; --warn:#8a5a00; --warn-bg:#fdf3e0;
-  --turf:#e8efe6; --turf-line:#c3d2bd;
+  --turf:#e8efe6; --turf-line:#c3d2bd; --legal:#0f7a3d;
 }
 @media (prefers-color-scheme: dark){
   :root{
@@ -18,20 +18,20 @@
     --rule:#31352c; --rule-2:#41453a;
     --r0:#242822; --r1:#0d366b; --r2:#1c5cab; --r3:#2a78d6; --r4:#5598e7; --r5:#9ec5f4; --r6:#cde2fb;
     --ink-on-deep:#f5f8fc; --warn:#f0c980; --warn-bg:#3a2e14;
-    --turf:#232821; --turf-line:#3b4536;
+    --turf:#232821; --turf-line:#3b4536; --legal:#43d183;
   }
 }
 :root[data-theme="light"]{
   --paper:#f7f7f3; --card:#fdfdfb; --ink:#181c15; --ink-2:#565b50; --ink-3:#8a8f82;
   --rule:#e2e3da; --rule-2:#cfd1c5; --turf:#e8efe6; --turf-line:#c3d2bd;
   --r0:#eef3ef; --r1:#cde2fb; --r2:#9ec5f4; --r3:#5598e7; --r4:#2a78d6; --r5:#1c5cab; --r6:#104281;
-  --warn:#8a5a00; --warn-bg:#fdf3e0;
+  --warn:#8a5a00; --warn-bg:#fdf3e0; --legal:#0f7a3d;
 }
 :root[data-theme="dark"]{
   --paper:#191b17; --card:#20231e; --ink:#f2f2ec; --ink-2:#b3b7aa; --ink-3:#7d8175;
   --rule:#31352c; --rule-2:#41453a; --turf:#232821; --turf-line:#3b4536;
   --r0:#242822; --r1:#0d366b; --r2:#1c5cab; --r3:#2a78d6; --r4:#5598e7; --r5:#9ec5f4; --r6:#cde2fb;
-  --warn:#f0c980; --warn-bg:#3a2e14;
+  --warn:#f0c980; --warn-bg:#3a2e14; --legal:#43d183;
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--paper);color:var(--ink);
@@ -157,6 +157,7 @@ tr.skip td{color:var(--ink-3);font-style:italic}
     <label class="inline"><input type="checkbox" id="l-slope" checked> slope shading</label>
     <label class="inline"><input type="checkbox" id="l-contour" checked> contours (2.5 cm)</label>
     <label class="inline"><input type="checkbox" id="l-arrow" checked> fall lines</label>
+    <label class="inline"><input type="checkbox" id="l-pins" checked> legal pin zones</label>
     <label class="inline"><input type="checkbox" id="l-scatter" checked> miss scatter</label>
     <label class="inline"><input type="checkbox" id="l-hull"> spread (hull)</label>
     <label class="inline"><input type="checkbox" id="l-hdr" checked> 50/80/95% contours</label>
@@ -205,8 +206,18 @@ async function loadGreen(label){
   const f=[];
   if(G.meta.needs_review) f.push(`<span class="badge">needs review</span>`);
   for(const fl of (G.meta.flags||[])) f.push(`<span class="badge">${fl}</span>`);
+  let legal="";
+  if(G.pins){
+    if(G.pins.scarce)
+      legal=`<br><b style="color:var(--warn)">no fair pin location</b> — too steep everywhere (USGA-guided)`;
+    else {
+      const hd=(G.meta.pin_zones.tiers||{})[G.pins.headline_tier]||{};
+      legal=`<br><b style="color:var(--legal)">${G.pins.legal_area_m2.toFixed(0)} m² legal pin area</b>
+             (${(100*G.pins.legal_fraction).toFixed(0)}% of the green, ≤${hd.slope_max_pct||2}% slope, ${G.pins.setback_m} m off the edge)`;
+    }
+  }
   $("green-flags").innerHTML=
-    `<p class="hint">${G.area_m2.toFixed(0)} m² putting surface · LiDAR macro contours only (±5–10 cm)
+    `<p class="hint">${G.area_m2.toFixed(0)} m² putting surface · LiDAR macro contours only (±5–10 cm)${legal}
      ${f.length?"<br>"+f.join(" "):""}</p>`;
   draw();
 }
@@ -244,6 +255,52 @@ function slopeColor(pct){
   return steps[Math.max(0,Math.min(5,Math.round(pct/8*5)))];
 }
 
+// Even-odd point-in-region test across all rings of a region; the server
+// orients outer rings and holes oppositely, so nested holes fall out right.
+function inRegion(rings, x, y){
+  let inside=false;
+  for(const r of rings){
+    for(let i=0,j=r.length-1;i<r.length;j=i++){
+      const [xi,yi]=r[i], [xj,yj]=r[j];
+      if((yi>y)!==(yj>y) && x < (xj-xi)*(y-yi)/(yj-yi)+xi) inside=!inside;
+    }
+  }
+  return inside;
+}
+// What kind of hole location a point is, from the pre-computed pin-zone map:
+// the tightest tier whose region contains it, else illegal (on the green but
+// unfair) or off the green. Null when the green has no pin-zone data.
+function pinTier(x,y){
+  if(!G.pins) return null;
+  for(const name of ["premium","standard","traditional"]){
+    const t=(G.pins.tiers||[]).find(t=>t.name===name);
+    if(t && inRegion(t.rings,x,y)) return name;
+  }
+  return inRegion(G.outline,x,y) ? "illegal" : "off";
+}
+const TIER_TEXT={
+  premium:["premium pin (≤1.5%)","legal"], standard:["legal pin (≤2%)","legal"],
+  traditional:["marginal pin (≤3%)","legal"], illegal:["not a legal pin","warn"],
+  off:["off the green","warn"],
+};
+// A colored "· <tier>" suffix for the pin readout, from a client-side lookup
+// (live, as you move the pin).
+function tierBadge(x,y){
+  const t=pinTier(x,y);
+  if(!t) return "";
+  const [label,kind]=TIER_TEXT[t];
+  const c=kind==="legal"?"var(--legal)":"var(--warn)";
+  return ` · <b style="color:${c}">${label}</b>`;
+}
+// The same badge from the server's authoritative tier name (course.TierName).
+function serverTierBadge(name){
+  if(!name) return "";
+  const label={premium:"premium pin (≤1.5%)",standard:"legal pin (≤2%)",
+    traditional:"marginal pin (≤3%)"}[name]||name;
+  const legal=label!==name; // the three named tiers are the legal ones
+  return ` · <b style="color:${legal?"var(--legal)":"var(--warn)"}">${label}</b>`;
+}
+
 /* ---- drawing ------------------------------------------------------------ */
 function draw(){
   if(!G) return;
@@ -268,9 +325,17 @@ function draw(){
       cx.fillRect(X(x)-w/2,Y(y)-w/2,w,w);
     }
   }
-  if($("l-contour").checked){
-    cx.strokeStyle=css("--turf-line"); cx.lineWidth=1;
-    for(const c of G.contours){ pathRings(c.rings); cx.stroke(); }
+  if($("l-pins").checked && G.pins && G.pins.tiers){
+    // The tiers nest (premium ⊂ standard ⊂ traditional), so painting each
+    // region's full extent back-to-front stacks the alpha — the tighter, more
+    // legal a pin, the deeper the green. The headline (standard) tier gets a
+    // crisp outline so "where a fair pin can go" reads at a glance.
+    const col=css("--legal");
+    cx.fillStyle=col;
+    for(const t of G.pins.tiers){ cx.globalAlpha=0.15; pathRings(t.rings); cx.fill("evenodd"); }
+    cx.globalAlpha=1;
+    const std=G.pins.tiers.find(t=>t.name===G.pins.headline_tier);
+    if(std){ cx.strokeStyle=col; cx.lineWidth=1.6; pathRings(std.rings); cx.stroke(); }
   }
   if($("l-arrow").checked){
     cx.strokeStyle=css("--ink-3"); cx.lineWidth=1; cx.globalAlpha=.55;
@@ -350,7 +415,7 @@ cv.addEventListener("click",e=>{
   const px=(e.clientX-r.left)*cv.width/r.width, py=(e.clientY-r.top)*cv.height/r.height;
   const p={x:+invX(px).toFixed(3), y:+invY(py).toFixed(3)};
   if(placeMode==="pin"){ pin=p; RES=null; selCell=null; $("results").innerHTML=""; $("warn").innerHTML="";
-    $("pinfo").innerHTML=`pin at <b>${p.x.toFixed(2)}, ${p.y.toFixed(2)}</b> m`;
+    $("pinfo").innerHTML=`pin at <b>${p.x.toFixed(2)}, ${p.y.toFixed(2)}</b> m${tierBadge(p.x,p.y)}`;
   } else { extraBalls.push(p); $("use-ring").checked=false; }
   draw();
 });
@@ -371,7 +436,7 @@ for(const [id,q] of [["q-quick","quick"],["q-full","full"]])
     $("q-quick").setAttribute("aria-pressed",q==="quick"); $("q-full").setAttribute("aria-pressed",q==="full");
   });
 $("clear-balls").addEventListener("click",()=>{ extraBalls=[]; $("use-ring").checked=true; draw(); });
-for(const id of ["l-slope","l-contour","l-arrow","l-scatter","l-hull","l-hdr"])
+for(const id of ["l-slope","l-contour","l-arrow","l-pins","l-scatter","l-hull","l-hdr"])
   $(id).addEventListener("change",draw);
 new MutationObserver(draw).observe(document.documentElement,{attributes:true,attributeFilter:["data-theme"]});
 
@@ -432,8 +497,10 @@ function render(){
   if(RES.compass_fallback) warn.push("This pin is too flat for a fall line — the clock is using compass bearings.");
   if(RES.runaway) warn.push(`The pin sits on ${RES.slope_at_pin_pct}% — steeper than the grade at which a ball cannot stop at Stimp ${RES.stimp}. Expect balls to run off the green.`);
   $("warn").innerHTML=warn.map(w=>`<p class="note">${w}</p>`).join("");
+  // After a run the tier is the server's authoritative lookup on the full
+  // grid, not the client's point-in-polygon on decimated boundary rings.
   $("pinfo").innerHTML=`pin at <b>${RES.pin[0].toFixed(2)}, ${RES.pin[1].toFixed(2)}</b> m ·
-    slope <b>${RES.slope_at_pin_pct}%</b> · uphill bears <b>${RES.fall_azimuth_deg}°</b>`;
+    slope <b>${RES.slope_at_pin_pct}%</b> · uphill bears <b>${RES.fall_azimuth_deg}°</b>${serverTierBadge(RES.pin_tier_name)}`;
 
   const byBall={};
   for(const b of RES.balls) byBall[b.idx]=b;

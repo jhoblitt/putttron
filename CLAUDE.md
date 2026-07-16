@@ -211,9 +211,10 @@ effective direction sigmas to those published tables in the first place.
    `jhoblitt/crooked_tree_greens` (a green_maps output tree). `putttron serve`
    is the interactive explorer (pick a green, click a pin and ball positions
    or take the clock-ring defaults, run, see per-position pace/make/3-putt/
-   off-green and the miss dispersion drawn on the green); `putttron
-   greensweep` is the headless equivalent that writes committed CSV +
-   manifest. Showcase runs in `results/greens/`.
+   off-green and the miss dispersion drawn on the green); it also overlays the
+   pre-computed **legal pin-zone** map (see below) and reports the tier of the
+   chosen pin. `putttron greensweep` is the headless equivalent that writes
+   committed CSV + manifest. Showcase runs in `results/greens/`.
 3. **Phase 3 — richer physics** as literature justifies: grain (anisotropic
    friction), skid-phase sidespin, lip interaction, off-center capture
    refinements, green-reading bias models.
@@ -225,10 +226,12 @@ green: `heightmap.npz` — keys `z` (2D float32, meters, NaN outside the
 buffered polygon, row-major north-up), `x0`, `y0` (UTM EPSG:6341 grid origin),
 `dx` (= dy, 0.25 m), `local_origin` (green centroid UTM), plus `crs`/`layout`
 strings — with `meta.json` alongside and a repo-level
-`outputs/greens/index.json` enumerating greens. `internal/npz` reads it
-directly (npz = zip of npy; no cgo, no Python at sim time); `internal/course`
-loads and recenters it; `-greens` points at the clone (default
-`~/github/crooked_tree_greens`).
+`outputs/greens/index.json` enumerating greens. Each green also ships a
+`pin_zones.npz` (green_maps Stage 4.5) — see "Legal pin zones" below.
+`internal/npz` reads them directly (npz = zip of npy; supports `<f4`/`<f8`,
+single-byte `|u1`/`|i1`, and `<U` strings; no cgo, no Python at sim time);
+`internal/course` loads and recenters everything; `-greens` points at the
+clone (default `~/github/crooked_tree_greens`).
 
 **THE GRID IS NOT THE GREEN.** green_maps buffers each green polygon by
 **12 m of collar** before gridding ("collar/surrounds provide sim boundary and
@@ -263,6 +266,30 @@ is why gradient tests use a 1e-3 tolerance, not 1e-9. Catmull-Rom bicubic for
 finite-difference the raw grid at sub-cell scale. The row axis runs
 north→south, so ∂/∂y carries a −1/dx factor; get that sign wrong and every
 green breaks the wrong way.
+
+### Legal pin zones
+
+Each green ships `pin_zones.npz` (green_maps Stage 4.5): a `tier_class` uint8
+grid on the *same grid as the heightmap* — `0` on-green-illegal, `1`
+traditional (≤3% macro slope), `2` standard (≤2%, the headline "legal" set),
+`3` premium (≤1.5%), `255` off-green. The tiers **nest** (premium ⊂ standard ⊂
+traditional): a cell's value is the tightest tier it qualifies for. `meta.json`
+carries a `pin_zones` block (per-tier areas/fractions, 3 m edge setback, a
+`scarce_legal_area` flag), and the index adds green-level
+`legal_pin_area_m2`/`legal_pin_fraction`/`scarce_legal_area`. A green too steep
+for any fair pin (hole_13, hole_18) legitimately yields **0 legal area** and is
+flagged scarce — not an error.
+
+`course.LoadGreen` loads this into `Green.Pins` (`*course.PinZones`), asserting
+the grid registers to the heightmap so `PinZones.TierAt(x,y)` returns the tier
+under the ball. `serve` renders the tiers as nested emerald regions over the
+slope shading (the headline/standard boundary outlined), reports the tier of
+the placed pin live (client-side point-in-polygon on the boundary rings) and
+authoritatively in the run result (`pin_tier`/`pin_tier_name`, from `TierAt`),
+and shows the green's legal-area summary. Legal-pin status is **advisory** —
+putttron still simulates a sucker pin, it just tells you it is one. This tier
+map is USGA-*guided*, not the Rules of Golf, and inherits the macro-contour
+fidelity caveat.
 
 ## Results & reporting
 

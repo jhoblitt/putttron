@@ -202,6 +202,28 @@ func elevGrid(h *green.Heightmap) (elev, greenMask, support *geom.Grid) {
 	return elev, greenMask, support
 }
 
+// pinTierGrid builds a 0/1 mask grid of the cells at or tighter than minTier,
+// in the +Y-up frame geom.Contours expects — the same row flip elevGrid does.
+// The pin-zone grid shares the heightmap's geometry, so its boundary rings
+// land exactly on the surface the ball rolls over.
+func pinTierGrid(p *course.PinZones, minTier int) *geom.Grid {
+	rows, cols := p.GridSize()
+	dx := p.CellSize()
+	x0, y0 := p.Origin()
+	g := &geom.Grid{
+		X0: x0, Y0: y0 - float64(rows-1)*dx, Dx: dx, Dy: dx,
+		Nx: cols, Ny: rows, Z: make([]float64, rows*cols),
+	}
+	for i := 0; i < rows; i++ {
+		for j := 0; j < cols; j++ {
+			if p.TierNode(i, j) >= minTier {
+				g.Z[(rows-1-i)*cols+j] = 1
+			}
+		}
+	}
+	return g
+}
+
 func (s *server) handleGreen(w http.ResponseWriter, r *http.Request) {
 	label := r.PathValue("label")
 	g, err := s.loadGreen(label, 10)
@@ -233,6 +255,20 @@ func (s *server) handleGreen(w http.ResponseWriter, r *http.Request) {
 		D  float64   `json:"d"`
 		V  []float64 `json:"v"`
 	}
+	type tierRegion struct {
+		Tier   int            `json:"tier"`
+		Name   string         `json:"name"`
+		AreaM2 float64        `json:"area_m2"`
+		Rings  [][][2]float64 `json:"rings"`
+	}
+	type pinLayer struct {
+		SetbackM float64      `json:"setback_m"`
+		Headline string       `json:"headline_tier"`
+		LegalM2  float64      `json:"legal_area_m2"`
+		LegalPct float64      `json:"legal_fraction"`
+		Scarce   bool         `json:"scarce"`
+		Tiers    []tierRegion `json:"tiers"` // outermost (traditional) first
+	}
 	out := struct {
 		Label    string           `json:"label"`
 		Meta     course.Meta      `json:"meta"`
@@ -245,6 +281,7 @@ func (s *server) handleGreen(w http.ResponseWriter, r *http.Request) {
 		Slope    slopeLayer       `json:"slope"`
 		Arrows   []arrow          `json:"arrows"`
 		Area     float64          `json:"area_m2"`
+		Pins     *pinLayer        `json:"pins,omitempty"` // legal hole-location tiers
 	}{
 		Label: label, Meta: g.Meta, Info: g.Info,
 		Bounds: [4]float64{x0, y0 - float64(rows-1)*dx, x0 + float64(cols-1)*dx, y0},
@@ -254,6 +291,38 @@ func (s *server) handleGreen(w http.ResponseWriter, r *http.Request) {
 
 	out.Outline = ringsToJSON(geom.Contours(greenMask, 0.5))
 	out.Support = ringsToJSON(geom.Contours(support, 0.5))
+
+	if g.Pins != nil {
+		pm := g.Meta.PinZones
+		pl := &pinLayer{
+			SetbackM: pm.EdgeSetbackM, Headline: pm.HeadlineTier,
+			LegalM2: g.Info.LegalPinAreaM2, LegalPct: g.Info.LegalPinFraction,
+			Scarce: g.Info.ScarceLegalArea,
+		}
+		// Outermost tier first so the client can paint them back-to-front.
+		for _, t := range []struct {
+			tier int
+			name string
+		}{
+			{course.TierTraditional, "traditional"},
+			{course.TierStandard, "standard"},
+			{course.TierPremium, "premium"},
+		} {
+			rings := geom.Contours(pinTierGrid(g.Pins, t.tier), 0.5)
+			if len(rings) == 0 {
+				continue
+			}
+			for i := range rings {
+				rings[i] = geom.DecimateRing(rings[i], 96)
+			}
+			pl.Tiers = append(pl.Tiers, tierRegion{
+				Tier: t.tier, Name: t.name,
+				AreaM2: pm.Tiers[t.name].AreaM2,
+				Rings:  ringsToJSON(rings),
+			})
+		}
+		out.Pins = pl
+	}
 
 	// Contour levels bracket the putting surface's own elevation range; the
 	// collar falls away steeply and would otherwise add dozens of levels.
@@ -599,7 +668,7 @@ func jobResult(job *jobState) map[string]any {
 		}
 	}
 
-	return map[string]any{
+	out := map[string]any{
 		"green":            spec.Green.Info.Label,
 		"pin":              []float64{round3(spec.Pin.X), round3(spec.Pin.Y)},
 		"stimp":            spec.Stimp,
@@ -613,6 +682,15 @@ func jobResult(job *jobState) map[string]any {
 		"dispersion":       res.Dispersion,
 		"reproduce":        reproduceCmd(spec),
 	}
+	// Whether the chosen pin is a fair (legal) hole location, per the
+	// pre-computed pin-zone map. Advisory: putttron will still simulate a
+	// sucker pin, it just tells you it is one.
+	if spec.Green.Pins != nil {
+		tier := spec.Green.Pins.TierAt(spec.Pin.X, spec.Pin.Y)
+		out["pin_tier"] = tier
+		out["pin_tier_name"] = course.TierName(tier)
+	}
+	return out
 }
 
 // reproduceCmd is the greensweep invocation that reruns exactly this
