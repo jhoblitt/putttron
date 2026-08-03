@@ -100,7 +100,8 @@ func TestDispersionReportIntegration(t *testing.T) {
 	dir := t.TempDir()
 	sweepArgs := []string{
 		"-trials", "400", "-fieldtrials", "40", "-fieldsweeps", "2", "-seed", "3",
-		"-stimps", "10", "-slopes", "0,2", "-skills", "mid", "-out", dir, "-tag", "smoke",
+		"-stimps", "10", "-slopes", "0,2", "-skills", "mid", "-lengths", "10,15,20",
+		"-out", dir, "-tag", "smoke",
 	}
 	cmdSweep(sweepArgs)
 	csvPath := filepath.Join(dir, "smoke.csv")
@@ -224,7 +225,8 @@ func TestDispersionMapFallLineOrientation(t *testing.T) {
 	dir := t.TempDir()
 	cmdSweep([]string{
 		"-trials", "300", "-fieldtrials", "40", "-fieldsweeps", "2", "-seed", "3",
-		"-stimps", "10", "-slopes", "1,5", "-skills", "tour", "-out", dir, "-tag", "s",
+		"-stimps", "10", "-slopes", "1,5", "-skills", "tour", "-lengths", "10,15,20",
+		"-out", dir, "-tag", "s",
 	})
 	csvPath := filepath.Join(dir, "s.csv")
 	cmdDispersion([]string{

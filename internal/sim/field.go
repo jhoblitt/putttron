@@ -29,7 +29,10 @@ type Field struct {
 	OffPenalty float64
 }
 
-var defaultRs = []float64{0.10, 0.20, 0.30, 0.45, 0.60, 0.80, 1.00, 1.30, 1.70, 2.20, 2.80, 3.50, 4.50, 6.00}
+// The outer rings exist for long lag putts: a 100 ft first putt leaves misses
+// with σ up to ~5 m (hcp30), so the grid must reach well past the old 6 m edge
+// or those leaves would all be scored by the linear extrapolation.
+var defaultRs = []float64{0.10, 0.20, 0.30, 0.45, 0.60, 0.80, 1.00, 1.30, 1.70, 2.20, 2.80, 3.50, 4.50, 6.00, 7.80, 10.20, 13.20}
 
 const nPsi = 12
 

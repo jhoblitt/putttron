@@ -113,7 +113,7 @@ func pairDeltas(group []*sim.CellResult) (dE, dSE []float64) {
 
 func cmdSweep(args []string) {
 	fs := newFlagSet("sweep")
-	trials := fs.Int("trials", 8000, "trials per cell")
+	trials := fs.Int("trials", 10000, "trials per cell")
 	fieldTrials := fs.Int("fieldtrials", 1500, "trials per field node per value-iteration sweep")
 	fieldSweeps := fs.Int("fieldsweeps", 5, "value-iteration sweeps")
 	seed := fs.Uint64("seed", 1, "master RNG seed")
@@ -123,6 +123,7 @@ func cmdSweep(args []string) {
 	stimpsF := fs.String("stimps", "8,10,12", "comma-separated stimp values")
 	skillsF := fs.String("skills", "", "comma-separated skill names (default: all)")
 	slopesF := fs.String("slopes", "0,1,2,3,4,5", "comma-separated slope grades, percent")
+	lengthsF := fs.String("lengths", "10,15,20,30,40,50,60,70,80,90,100", "comma-separated putt lengths, feet")
 	fs.Parse(args)
 
 	profiles := player.Profiles
@@ -152,8 +153,8 @@ func cmdSweep(args []string) {
 	}
 	stimps := parseFloats("stimp", *stimpsF)
 	slopes := parseFloats("slope", *slopesF)
+	lengthsFt := parseFloats("length", *lengthsF)
 	clocks := []int{12, 3, 6}
-	lengthsFt := []float64{10, 15, 20}
 	rollouts := []float64{0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2}
 
 	start := time.Now()
@@ -209,7 +210,7 @@ func cmdSweep(args []string) {
 		os.Exit(1)
 	}
 	writeCSV(filepath.Join(*outDir, *tag+".csv"), rows)
-	writeManifest(filepath.Join(*outDir, *tag+".manifest.yaml"), *trials, *fieldTrials, *fieldSweeps, *seed, *lag, stimps, slopes)
+	writeManifest(filepath.Join(*outDir, *tag+".manifest.yaml"), *trials, *fieldTrials, *fieldSweeps, *seed, *lag, stimps, slopes, lengthsFt)
 	fmt.Fprintf(os.Stderr, "done in %s: %d cells -> %s/%s.csv\n",
 		time.Since(start).Round(time.Second), len(rows), *outDir, *tag)
 }
@@ -231,9 +232,9 @@ func writeCSV(path string, rows []sweepRow) {
 	}
 }
 
-func writeManifest(path string, trials, fieldTrials, fieldSweeps int, seed uint64, lag float64, stimps, slopes []float64) {
+func writeManifest(path string, trials, fieldTrials, fieldSweeps int, seed uint64, lag float64, stimps, slopes, lengthsFt []float64) {
 	desc := "unknown"
-	if out, err := exec.Command("git", "rev-parse", "--short", "HEAD").Output(); err == nil {
+	if out, err := exec.Command("git", "describe", "--always", "--dirty").Output(); err == nil {
 		desc = strings.TrimSpace(string(out))
 	}
 	var b strings.Builder
@@ -246,6 +247,7 @@ func writeManifest(path string, trials, fieldTrials, fieldSweeps int, seed uint6
 	fmt.Fprintf(&b, "followup_lag_rollout_m: %g\n", lag)
 	fmt.Fprintf(&b, "stimps: [%s]\n", trimJoin(stimps))
 	fmt.Fprintf(&b, "slopes_pct: [%s]\n", trimJoin(slopes))
+	fmt.Fprintf(&b, "lengths_ft: [%s]\n", trimJoin(lengthsFt))
 	fmt.Fprintf(&b, "physics:\n")
 	fmt.Fprintf(&b, "  capture_vc0_ms: %g  # Penner 2002 / Holmes 1991\n", physics.PennerVC0)
 	fmt.Fprintf(&b, "  stimp_release_ms: %g\n", physics.StimpSpeed)

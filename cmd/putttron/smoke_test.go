@@ -17,7 +17,7 @@ func TestSweepReportSmoke(t *testing.T) {
 	dir := t.TempDir()
 	cmdSweep([]string{
 		"-trials", "60", "-fieldtrials", "40", "-fieldsweeps", "2", "-seed", "3",
-		"-stimps", "10", "-slopes", "0", "-skills", "tour",
+		"-stimps", "10", "-slopes", "0", "-skills", "tour", "-lengths", "10,15,20",
 		"-out", dir, "-tag", "smoke",
 	})
 

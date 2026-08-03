@@ -41,11 +41,11 @@ type missPt struct {
 // match the sweep CSV to the last printed digit.
 func cmdDispersion(args []string) {
 	fs := newFlagSet("dispersion")
-	in := fs.String("in", "results/sweep-planar-v3.csv", "sweep CSV to take per-cell optima from")
+	in := fs.String("in", "results/sweep-planar-v4.csv", "sweep CSV to take per-cell optima from")
 	outDir := fs.String("out", "results", "output directory")
-	tag := fs.String("tag", "dispersion-v1", "output file basename")
+	tag := fs.String("tag", "dispersion-v2", "output file basename")
 	stimp := fs.Float64("stimp", 10, "green speed to capture (the pace-matrix view)")
-	trials := fs.Int("trials", 8000, "trials per cell; must match the sweep for CRN reproduction")
+	trials := fs.Int("trials", 10000, "trials per cell; must match the sweep for CRN reproduction")
 	seed := fs.Uint64("seed", 1, "master RNG seed; must match the sweep manifest")
 	limit := fs.Int("cap", 1500, "max stored miss positions per cell (hull vertices always kept)")
 	fs.Parse(args)
@@ -226,7 +226,7 @@ func writeDispCells(path string, cells []dispCell) {
 
 func writeDispManifest(path, in string, stimp float64, trials int, seed uint64, limit int, cells []dispCell) {
 	desc := "unknown"
-	if out, err := exec.Command("git", "rev-parse", "--short", "HEAD").Output(); err == nil {
+	if out, err := exec.Command("git", "describe", "--always", "--dirty").Output(); err == nil {
 		desc = strings.TrimSpace(string(out))
 	}
 	var b strings.Builder

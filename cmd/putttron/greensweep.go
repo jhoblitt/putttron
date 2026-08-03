@@ -227,7 +227,7 @@ func greenCSV(spec RunSpec, res *RunResult) string {
 // identity of the heightmap it was run against.
 func greenManifest(spec RunSpec, res *RunResult) string {
 	desc := "unknown"
-	if out, err := exec.Command("git", "rev-parse", "--short", "HEAD").Output(); err == nil {
+	if out, err := exec.Command("git", "describe", "--always", "--dirty").Output(); err == nil {
 		desc = strings.TrimSpace(string(out))
 	}
 	var b strings.Builder

@@ -39,7 +39,7 @@ type groupKey struct {
 // cmdReport reads a sweep CSV and emits the optimal-rollout analysis.
 func cmdReport(args []string) {
 	fs := newFlagSet("report")
-	in := fs.String("in", "results/sweep-planar-v1.csv", "sweep CSV(s), comma-separated")
+	in := fs.String("in", "results/sweep-planar-v4.csv", "sweep CSV(s), comma-separated")
 	out := fs.String("out", "results/optimal-rollout.md", "output markdown")
 	htmlOut := fs.String("html", "results/pace-matrix.html", "interactive pace-matrix page (empty to skip)")
 	breakoutOut := fs.String("breakout", "results/breakout-slope-clock.md", "slope-by-direction markdown tables (empty to skip)")
